@@ -1,10 +1,16 @@
-import { IExecuteFunctions } from 'n8n-core';
+import {
+	type IExecuteFunctions,
+	type IDataObject,
+	type INodeExecutionData,
+	type INodeType,
+	type INodeTypeDescription,
+	type IHttpRequestMethods,
+	NodeConnectionType,
+} from 'n8n-workflow';
 
-import { IDataObject, INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
+import { isoCountryCodes } from '@utils/ISOCountryCodes';
 
 import { spotifyApiRequest, spotifyApiRequestAllItems } from './GenericFunctions';
-
-import { isoCountryCodes } from './IsoCountryCodes';
 
 export class Spotify implements INodeType {
 	description: INodeTypeDescription = {
@@ -18,8 +24,8 @@ export class Spotify implements INodeType {
 		defaults: {
 			name: 'Spotify',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'spotifyOAuth2Api',
@@ -326,7 +332,7 @@ export class Spotify implements INodeType {
 					},
 				},
 				placeholder: 'US',
-				description: 'Top tracks in which country? Enter the postal abbriviation',
+				description: 'Top tracks in which country? Enter the postal abbreviation',
 			},
 
 			{
@@ -358,13 +364,13 @@ export class Spotify implements INodeType {
 						resource: ['playlist'],
 					},
 				},
-				// eslint-disable-next-line n8n-nodes-base/node-param-options-type-unsorted-items
+
 				options: [
 					{
 						name: 'Add an Item',
 						value: 'add',
-						description: 'Add tracks from a playlist by track and playlist URI or ID',
-						action: 'Add an Item a playlist',
+						description: 'Add tracks to a playlist by track and playlist URI or ID',
+						action: 'Add an Item to a playlist',
 					},
 					{
 						name: 'Create a Playlist',
@@ -785,7 +791,7 @@ export class Spotify implements INodeType {
 		// For Query string
 		let qs: IDataObject;
 
-		let requestMethod: string;
+		let requestMethod: IHttpRequestMethods;
 		let endpoint: string;
 		let returnAll: boolean;
 		let propertyName = '';
@@ -1302,8 +1308,12 @@ export class Spotify implements INodeType {
 					);
 				}
 
+				// Remove null values from the response
+				if (operation === 'getUserPlaylists') {
+					responseData = responseData.filter((item: IDataObject) => item !== null);
+				}
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as IDataObject[]),
 					{ itemData: { item: i } },
 				);
 				returnData.push(...executionData);
@@ -1320,6 +1330,6 @@ export class Spotify implements INodeType {
 			}
 		}
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

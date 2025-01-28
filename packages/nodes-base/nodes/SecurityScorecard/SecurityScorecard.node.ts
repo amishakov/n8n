@@ -1,25 +1,23 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import { IDataObject, INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
+import moment from 'moment-timezone';
+import type {
+	IExecuteFunctions,
+	IDataObject,
+	INodeExecutionData,
+	INodeType,
+	INodeTypeDescription,
+} from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
 
 import { companyFields, companyOperations } from './descriptions/CompanyDescription';
-
 import { industryFields, industryOperations } from './descriptions/IndustryDescription';
-
 import { inviteFields, inviteOperations } from './descriptions/InviteDescription';
-
-import { portfolioFields, portfolioOperations } from './descriptions/PortfolioDescription';
-
 import {
 	portfolioCompanyFields,
 	portfolioCompanyOperations,
 } from './descriptions/PortfolioCompanyDescription';
-
+import { portfolioFields, portfolioOperations } from './descriptions/PortfolioDescription';
 import { reportFields, reportOperations } from './descriptions/ReportDescription';
-
 import { scorecardApiRequest, simplify } from './GenericFunctions';
-
-import moment from 'moment';
 
 export class SecurityScorecard implements INodeType {
 	description: INodeTypeDescription = {
@@ -33,8 +31,8 @@ export class SecurityScorecard implements INodeType {
 		defaults: {
 			name: 'SecurityScorecard',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'securityScorecardApi',
@@ -267,7 +265,7 @@ export class SecurityScorecard implements INodeType {
 						body.date = this.getNodeParameter('date', i);
 					}
 					if (['issues', 'portfolio'].indexOf(reportType) > -1) {
-						body.format = this.getNodeParameter('options.format', i) ?? 'pdf';
+						body.format = this.getNodeParameter('options.format', i) || 'pdf';
 					}
 					if (['detailed', 'summary'].indexOf(reportType) > -1) {
 						body.branding = this.getNodeParameter('branding', i);
@@ -348,7 +346,7 @@ export class SecurityScorecard implements INodeType {
 					}
 
 					if (simple) {
-						responseData = simplify(responseData);
+						responseData = simplify(responseData as IDataObject[]);
 					}
 
 					returnData.push.apply(returnData, responseData as IDataObject[]);
@@ -382,7 +380,7 @@ export class SecurityScorecard implements INodeType {
 					}
 
 					if (simple) {
-						responseData = simplify(responseData);
+						responseData = simplify(responseData as IDataObject[]);
 					}
 
 					returnData.push.apply(returnData, responseData as IDataObject[]);
@@ -451,7 +449,7 @@ export class SecurityScorecard implements INodeType {
 					}
 
 					if (simple) {
-						responseData = simplify(responseData);
+						responseData = simplify(responseData as IDataObject[]);
 					}
 
 					returnData.push.apply(returnData, responseData as IDataObject[]);
@@ -487,7 +485,7 @@ export class SecurityScorecard implements INodeType {
 					}
 
 					if (simple) {
-						responseData = simplify(responseData);
+						responseData = simplify(responseData as IDataObject[]);
 					}
 
 					returnData.push.apply(returnData, responseData as IDataObject[]);
@@ -516,7 +514,7 @@ export class SecurityScorecard implements INodeType {
 		}
 		// Handle file download output data differently
 		if (resource === 'report' && operation === 'download') {
-			return this.prepareOutputData(items);
+			return [items];
 		}
 		return [this.helpers.returnJsonArray(returnData)];
 	}

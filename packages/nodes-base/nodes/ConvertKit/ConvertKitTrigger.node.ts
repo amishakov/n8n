@@ -1,6 +1,7 @@
-import { IHookFunctions, IWebhookFunctions } from 'n8n-core';
-
-import {
+import { snakeCase } from 'change-case';
+import type {
+	IHookFunctions,
+	IWebhookFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodePropertyOptions,
@@ -8,10 +9,9 @@ import {
 	INodeTypeDescription,
 	IWebhookResponseData,
 } from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
 
 import { convertKitApiRequest } from './GenericFunctions';
-
-import { snakeCase } from 'change-case';
 
 export class ConvertKitTrigger implements INodeType {
 	description: INodeTypeDescription = {
@@ -26,7 +26,7 @@ export class ConvertKitTrigger implements INodeType {
 			name: 'ConvertKit Trigger',
 		},
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'convertKitApi',
@@ -97,7 +97,7 @@ export class ConvertKitTrigger implements INodeType {
 				name: 'formId',
 				type: 'options',
 				description:
-					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>',
+					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 				typeOptions: {
 					loadOptionsMethod: 'getForms',
 				},
@@ -114,7 +114,7 @@ export class ConvertKitTrigger implements INodeType {
 				name: 'courseId',
 				type: 'options',
 				description:
-					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>',
+					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 				typeOptions: {
 					loadOptionsMethod: 'getSequences',
 				},
@@ -156,7 +156,7 @@ export class ConvertKitTrigger implements INodeType {
 				name: 'tagId',
 				type: 'options',
 				description:
-					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>',
+					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 				typeOptions: {
 					loadOptionsMethod: 'getTags',
 				},
@@ -173,7 +173,7 @@ export class ConvertKitTrigger implements INodeType {
 
 	methods = {
 		loadOptions: {
-			// Get all the tags to display them to user so that he can
+			// Get all the tags to display them to user so that they can
 			// select them easily
 			async getTags(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -193,7 +193,7 @@ export class ConvertKitTrigger implements INodeType {
 
 				return returnData;
 			},
-			// Get all the forms to display them to user so that he can
+			// Get all the forms to display them to user so that they can
 			// select them easily
 			async getForms(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -214,7 +214,7 @@ export class ConvertKitTrigger implements INodeType {
 				return returnData;
 			},
 
-			// Get all the sequences to display them to user so that he can
+			// Get all the sequences to display them to user so that they can
 			// select them easily
 			async getSequences(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -237,7 +237,6 @@ export class ConvertKitTrigger implements INodeType {
 		},
 	};
 
-	// @ts-ignore (because of request)
 	webhookMethods = {
 		default: {
 			async checkExists(this: IHookFunctions): Promise<boolean> {

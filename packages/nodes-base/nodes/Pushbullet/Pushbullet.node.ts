@@ -1,19 +1,16 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
-	IBinaryKeyData,
+import moment from 'moment-timezone';
+import type {
 	IDataObject,
+	IExecuteFunctions,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
-	NodeOperationError,
 } from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
 
 import { pushbulletApiRequest, pushbulletApiRequestAllItems } from './GenericFunctions';
-
-import moment from 'moment-timezone';
 
 export class Pushbullet implements INodeType {
 	description: INodeTypeDescription = {
@@ -27,8 +24,8 @@ export class Pushbullet implements INodeType {
 		defaults: {
 			name: 'Pushbullet',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'pushbulletOAuth2Api',
@@ -160,7 +157,7 @@ export class Pushbullet implements INodeType {
 				description: 'URL of the push',
 			},
 			{
-				displayName: 'Binary Property',
+				displayName: 'Input Binary Field',
 				name: 'binaryPropertyName',
 				type: 'string',
 				default: 'data',
@@ -173,8 +170,7 @@ export class Pushbullet implements INodeType {
 					},
 				},
 				placeholder: '',
-				description:
-					'Name of the binary property which contains the data for the file to be created',
+				hint: 'The name of the input binary field containing the file to be written',
 			},
 			{
 				displayName: 'Target',
@@ -247,7 +243,7 @@ export class Pushbullet implements INodeType {
 				},
 				default: '',
 				description:
-					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>',
+					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 			},
 			{
 				displayName: 'Push ID',
@@ -408,20 +404,7 @@ export class Pushbullet implements INodeType {
 
 						if (type === 'file') {
 							const binaryPropertyName = this.getNodeParameter('binaryPropertyName', 0);
-
-							if (items[i].binary === undefined) {
-								throw new NodeOperationError(this.getNode(), 'No binary data exists on item!');
-							}
-							//@ts-ignore
-							if (items[i].binary[binaryPropertyName] === undefined) {
-								throw new NodeOperationError(
-									this.getNode(),
-									`No binary data property "${binaryPropertyName}" does not exists on item!`,
-									{ itemIndex: i },
-								);
-							}
-
-							const binaryData = (items[i].binary as IBinaryKeyData)[binaryPropertyName];
+							const binaryData = this.helpers.assertBinaryData(i, binaryPropertyName);
 							const dataBuffer = await this.helpers.getBinaryDataBuffer(i, binaryPropertyName);
 
 							//create upload url
@@ -436,7 +419,7 @@ export class Pushbullet implements INodeType {
 							});
 
 							//upload the file
-							await pushbulletApiRequest.call(this, 'POST', '', {}, {}, uploadUrl, {
+							await pushbulletApiRequest.call(this, 'POST', '', {}, {}, uploadUrl as string, {
 								formData: {
 									file: {
 										value: dataBuffer,
@@ -504,7 +487,7 @@ export class Pushbullet implements INodeType {
 					}
 				}
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as IDataObject[]),
 					{ itemData: { item: i } },
 				);
 
@@ -522,6 +505,6 @@ export class Pushbullet implements INodeType {
 			}
 		}
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

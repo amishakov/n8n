@@ -1,14 +1,19 @@
-import { OptionsWithUri } from 'request';
-
-import { IExecuteFunctions, ILoadOptionsFunctions } from 'n8n-core';
-
-import { IDataObject, IHookFunctions, IWebhookFunctions, NodeApiError } from 'n8n-workflow';
-
 import { snakeCase } from 'change-case';
+import type {
+	JsonObject,
+	IDataObject,
+	IExecuteFunctions,
+	ILoadOptionsFunctions,
+	IHookFunctions,
+	IWebhookFunctions,
+	IHttpRequestMethods,
+	IRequestOptions,
+} from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
 
 export async function pagerDutyApiRequest(
 	this: IExecuteFunctions | IWebhookFunctions | IHookFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	resource: string,
 
 	body: any = {},
@@ -18,21 +23,21 @@ export async function pagerDutyApiRequest(
 ): Promise<any> {
 	const authenticationMethod = this.getNodeParameter('authentication', 0);
 
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		headers: {
 			Accept: 'application/vnd.pagerduty+json;version=2',
 		},
 		method,
 		body,
 		qs: query,
-		uri: uri ?? `https://api.pagerduty.com${resource}`,
+		uri: uri || `https://api.pagerduty.com${resource}`,
 		json: true,
 		qsStringifyOptions: {
 			arrayFormat: 'brackets',
 		},
 	};
 
-	if (!Object.keys(body).length) {
+	if (!Object.keys(body as IDataObject).length) {
 		delete options.form;
 	}
 	if (!Object.keys(query).length) {
@@ -52,14 +57,14 @@ export async function pagerDutyApiRequest(
 			return await this.helpers.requestOAuth2.call(this, 'pagerDutyOAuth2Api', options);
 		}
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
 export async function pagerDutyApiRequestAllItems(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
 	propertyName: string,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 
 	body: any = {},
@@ -74,7 +79,7 @@ export async function pagerDutyApiRequestAllItems(
 	do {
 		responseData = await pagerDutyApiRequest.call(this, method, endpoint, body, query);
 		query.offset++;
-		returnData.push.apply(returnData, responseData[propertyName]);
+		returnData.push.apply(returnData, responseData[propertyName] as IDataObject[]);
 	} while (responseData.more);
 
 	return returnData;

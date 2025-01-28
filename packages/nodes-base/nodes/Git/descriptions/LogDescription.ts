@@ -1,4 +1,4 @@
-import { INodeProperties } from 'n8n-workflow';
+import type { INodeProperties } from 'n8n-workflow';
 
 export const logFields: INodeProperties[] = [
 	{
@@ -39,7 +39,7 @@ export const logFields: INodeProperties[] = [
 				operation: ['log'],
 			},
 		},
-		placeholder: 'Add Option',
+		placeholder: 'Add option',
 		default: {},
 		options: [
 			{

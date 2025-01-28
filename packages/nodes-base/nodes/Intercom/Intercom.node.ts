@@ -1,28 +1,29 @@
-import { IExecuteFunctions } from 'n8n-core';
-import {
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
-	NodeApiError,
-	NodeOperationError,
+	JsonObject,
 } from 'n8n-workflow';
-import { leadFields, leadOperations } from './LeadDescription';
-import { intercomApiRequest, intercomApiRequestAllItems, validateJSON } from './GenericFunctions';
-import { IAvatar, ILead, ILeadCompany } from './LeadInterface';
-import { userFields, userOperations } from './UserDescription';
-import { IUser, IUserCompany } from './UserInterface';
+import { NodeConnectionType, NodeApiError, NodeOperationError } from 'n8n-workflow';
+
 import { companyFields, companyOperations } from './CompanyDescription';
-import { ICompany } from './CompanyInteface';
+import type { ICompany } from './CompanyInteface';
+import { intercomApiRequest, intercomApiRequestAllItems, validateJSON } from './GenericFunctions';
+import { leadFields, leadOperations } from './LeadDescription';
+import type { IAvatar, ILead, ILeadCompany } from './LeadInterface';
+import { userFields, userOperations } from './UserDescription';
+import type { IUser, IUserCompany } from './UserInterface';
 
 export class Intercom implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Intercom',
 		name: 'intercom',
-		// eslint-disable-next-line n8n-nodes-base/node-class-description-icon-not-svg
-		icon: 'file:intercom.png',
+
+		icon: 'file:intercom.svg',
 		group: ['output'],
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
@@ -30,8 +31,8 @@ export class Intercom implements INodeType {
 		defaults: {
 			name: 'Intercom',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'intercomApi',
@@ -75,7 +76,7 @@ export class Intercom implements INodeType {
 
 	methods = {
 		loadOptions: {
-			// Get all the available companies to display them to user so that he can
+			// Get all the available companies to display them to user so that they can
 			// select them easily
 			async getCompanies(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -83,7 +84,7 @@ export class Intercom implements INodeType {
 				try {
 					response = await intercomApiRequest.call(this, '/companies', 'GET');
 				} catch (error) {
-					throw new NodeApiError(this.getNode(), error);
+					throw new NodeApiError(this.getNode(), error as JsonObject);
 				}
 				const companies = response.companies;
 				for (const company of companies) {
@@ -202,7 +203,7 @@ export class Intercom implements INodeType {
 						try {
 							responseData = await intercomApiRequest.call(this, '/contacts', 'POST', body);
 						} catch (error) {
-							throw new NodeApiError(this.getNode(), error);
+							throw new NodeApiError(this.getNode(), error as JsonObject);
 						}
 					}
 					if (operation === 'get') {
@@ -225,7 +226,7 @@ export class Intercom implements INodeType {
 								responseData = responseData.contacts;
 							}
 						} catch (error) {
-							throw new NodeApiError(this.getNode(), error);
+							throw new NodeApiError(this.getNode(), error as JsonObject);
 						}
 					}
 					if (operation === 'getAll') {
@@ -249,7 +250,7 @@ export class Intercom implements INodeType {
 								responseData = responseData.contacts;
 							}
 						} catch (error) {
-							throw new NodeApiError(this.getNode(), error);
+							throw new NodeApiError(this.getNode(), error as JsonObject);
 						}
 					}
 					if (operation === 'delete') {
@@ -263,7 +264,7 @@ export class Intercom implements INodeType {
 								responseData = await intercomApiRequest.call(this, '/contacts', 'DELETE', {}, qs);
 							}
 						} catch (error) {
-							throw new NodeApiError(this.getNode(), error);
+							throw new NodeApiError(this.getNode(), error as JsonObject);
 						}
 					}
 				}
@@ -378,7 +379,7 @@ export class Intercom implements INodeType {
 						try {
 							responseData = await intercomApiRequest.call(this, '/users', 'POST', body, qs);
 						} catch (error) {
-							throw new NodeApiError(this.getNode(), error);
+							throw new NodeApiError(this.getNode(), error as JsonObject);
 						}
 					}
 					if (operation === 'get') {
@@ -400,7 +401,7 @@ export class Intercom implements INodeType {
 								responseData = await intercomApiRequest.call(this, '/users', 'GET', {}, qs);
 							}
 						} catch (error) {
-							throw new NodeApiError(this.getNode(), error);
+							throw new NodeApiError(this.getNode(), error as JsonObject);
 						}
 					}
 					if (operation === 'getAll') {
@@ -424,7 +425,7 @@ export class Intercom implements INodeType {
 								responseData = responseData.users;
 							}
 						} catch (error) {
-							throw new NodeApiError(this.getNode(), error);
+							throw new NodeApiError(this.getNode(), error as JsonObject);
 						}
 					}
 					if (operation === 'delete') {
@@ -615,7 +616,7 @@ export class Intercom implements INodeType {
 				}
 
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as IDataObject),
 					{ itemData: { item: i } },
 				);
 
@@ -633,6 +634,6 @@ export class Intercom implements INodeType {
 			}
 		}
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

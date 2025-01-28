@@ -1,4 +1,4 @@
-import { INodeProperties } from 'n8n-workflow';
+import type { INodeProperties } from 'n8n-workflow';
 
 export const incomingWebhookOperations: INodeProperties[] = [
 	{
@@ -72,7 +72,7 @@ export const incomingWebhookFields: INodeProperties[] = [
 		name: 'messageUi',
 		type: 'collection',
 		required: true,
-		placeholder: 'Add Options',
+		placeholder: 'Add option',
 		displayOptions: {
 			show: {
 				resource: ['incomingWebhook'],

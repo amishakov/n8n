@@ -1,20 +1,18 @@
-import { IHookFunctions, IWebhookFunctions } from 'n8n-core';
-
-import {
+import { randomBytes } from 'crypto';
+import type {
+	IHookFunctions,
+	IWebhookFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
 	IWebhookResponseData,
-	jsonParse,
 } from 'n8n-workflow';
+import { NodeConnectionType, jsonParse } from 'n8n-workflow';
 
 import { wufooApiRequest } from './GenericFunctions';
-
-import { IField, IWebhook } from './Interface';
-
-import { randomBytes } from 'crypto';
+import type { IField, IWebhook } from './Interface';
 
 export class WufooTrigger implements INodeType {
 	description: INodeTypeDescription = {
@@ -29,7 +27,7 @@ export class WufooTrigger implements INodeType {
 			name: 'Wufoo Trigger',
 		},
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'wufooApi',
@@ -55,7 +53,7 @@ export class WufooTrigger implements INodeType {
 					loadOptionsMethod: 'getForms',
 				},
 				description:
-					'The form upon which will trigger this node when a new entry is made. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+					'The form upon which will trigger this node when a new entry is made. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 			},
 			{
 				displayName: 'Only Answers',
@@ -98,7 +96,6 @@ export class WufooTrigger implements INodeType {
 		},
 	};
 
-	// @ts-ignore
 	webhookMethods = {
 		default: {
 			// No API endpoint to allow checking of existing webhooks.
@@ -154,7 +151,7 @@ export class WufooTrigger implements INodeType {
 			return {};
 		}
 
-		const fieldsObject = jsonParse<any>(req.body.FieldStructure, {
+		const fieldsObject = jsonParse<any>(req.body.FieldStructure as string, {
 			errorMessage: "Invalid JSON in request body field 'FieldStructure'",
 		});
 
@@ -209,10 +206,10 @@ export class WufooTrigger implements INodeType {
 				entryId: req.body.EntryId as number,
 				dateCreated: req.body.DateCreated as Date,
 				formId: req.body.FormId as string,
-				formStructure: jsonParse(req.body.FormStructure, {
+				formStructure: jsonParse(req.body.FormStructure as string, {
 					errorMessage: "Invalid JSON in request body field 'FormStructure'",
 				}),
-				fieldStructure: jsonParse(req.body.FieldStructure, {
+				fieldStructure: jsonParse(req.body.FieldStructure as string, {
 					errorMessage: "Invalid JSON in request body field 'FieldStructure'",
 				}),
 				entries,

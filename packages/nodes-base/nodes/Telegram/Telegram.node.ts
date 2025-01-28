@@ -1,14 +1,32 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
+	IHttpRequestMethods,
+} from 'n8n-workflow';
+import {
+	BINARY_ENCODING,
+	SEND_AND_WAIT_OPERATION,
+	NodeConnectionType,
 	NodeOperationError,
 } from 'n8n-workflow';
+import type { Readable } from 'stream';
 
-import { addAdditionalFields, apiRequest, getPropertyName } from './GenericFunctions';
+import {
+	addAdditionalFields,
+	apiRequest,
+	createSendAndWaitMessageBody,
+	getPropertyName,
+} from './GenericFunctions';
+import { appendAttributionOption } from '../../utils/descriptions';
+import { sendAndWaitWebhooksDescription } from '../../utils/sendAndWait/descriptions';
+import {
+	configureWaitTillDate,
+	getSendAndWaitProperties,
+	sendAndWaitWebhook,
+} from '../../utils/sendAndWait/utils';
 
 export class Telegram implements INodeType {
 	description: INodeTypeDescription = {
@@ -16,20 +34,22 @@ export class Telegram implements INodeType {
 		name: 'telegram',
 		icon: 'file:telegram.svg',
 		group: ['output'],
-		version: 1,
+		version: [1, 1.1, 1.2],
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
 		description: 'Sends data to Telegram',
 		defaults: {
 			name: 'Telegram',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		usableAsTool: true,
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'telegramApi',
 				required: true,
 			},
 		],
+		webhooks: sendAndWaitWebhooksDescription,
 		properties: [
 			{
 				displayName: 'Resource',
@@ -259,6 +279,12 @@ export class Telegram implements INodeType {
 						value: 'sendMessage',
 						description: 'Send a text message',
 						action: 'Send a text message',
+					},
+					{
+						name: 'Send and Wait for Response',
+						value: SEND_AND_WAIT_OPERATION,
+						description: 'Send a message and wait for response',
+						action: 'Send message and wait for response',
 					},
 					{
 						name: 'Send Photo',
@@ -687,7 +713,7 @@ export class Telegram implements INodeType {
 			// ----------------------------------
 
 			{
-				displayName: 'Binary Data',
+				displayName: 'Binary File',
 				name: 'binaryData',
 				type: 'boolean',
 				default: false,
@@ -708,11 +734,12 @@ export class Telegram implements INodeType {
 				description: 'Whether the data to upload should be taken from binary field',
 			},
 			{
-				displayName: 'Binary Property',
+				displayName: 'Input Binary Field',
 				name: 'binaryPropertyName',
 				type: 'string',
 				default: 'data',
 				required: true,
+				hint: 'The name of the input binary field containing the file to be written',
 				displayOptions: {
 					show: {
 						operation: [
@@ -1021,8 +1048,12 @@ export class Telegram implements INodeType {
 										type: 'options',
 										options: [
 											{
-												name: 'Markdown',
+												name: 'Markdown (Legacy)',
 												value: 'Markdown',
+											},
+											{
+												name: 'MarkdownV2',
+												value: 'MarkdownV2',
 											},
 											{
 												name: 'HTML',
@@ -1282,6 +1313,26 @@ export class Telegram implements INodeType {
 														default: '',
 														description: 'HTTP or tg:// URL to be opened when button is pressed',
 													},
+													{
+														displayName: 'Web App',
+														name: 'web_app',
+														type: 'collection',
+														placeholder: 'Set Telegram Web App URL',
+														typeOptions: {
+															multipleValues: false,
+														},
+														default: {},
+														options: [
+															{
+																displayName: 'URL',
+																name: 'url',
+																type: 'string',
+																default: '',
+																description: 'An HTTPS URL of a Web App to be opened',
+															},
+														],
+														description: 'Launch the Telegram Web App',
+													},
 												],
 											},
 										],
@@ -1358,6 +1409,26 @@ export class Telegram implements INodeType {
 														default: false,
 														description: "Whether the user's request_location",
 													},
+													{
+														displayName: 'Web App',
+														name: 'web_app',
+														type: 'collection',
+														placeholder: 'Set Telegram Web App URL',
+														typeOptions: {
+															multipleValues: false,
+														},
+														default: {},
+														options: [
+															{
+																displayName: 'URL',
+																name: 'url',
+																type: 'string',
+																default: '',
+																description: 'An HTTPS URL of a Web App to be opened',
+															},
+														],
+														description: 'Launch the Telegram Web App',
+													},
 												],
 											},
 										],
@@ -1373,7 +1444,7 @@ export class Telegram implements INodeType {
 				displayName: 'Reply Keyboard Options',
 				name: 'replyKeyboardOptions',
 				type: 'collection',
-				placeholder: 'Add Option',
+				placeholder: 'Add option',
 				displayOptions: {
 					show: {
 						replyMarkup: ['replyKeyboard'],
@@ -1460,6 +1531,16 @@ export class Telegram implements INodeType {
 				},
 				default: {},
 				options: [
+					{
+						...appendAttributionOption,
+						description:
+							'Whether to include the phrase “This message was sent automatically with n8n” to the end of the message',
+						displayOptions: {
+							show: {
+								'/operation': ['sendMessage'],
+							},
+						},
+					},
 					{
 						displayName: 'Caption',
 						name: 'caption',
@@ -1560,8 +1641,12 @@ export class Telegram implements INodeType {
 						type: 'options',
 						options: [
 							{
-								name: 'Markdown',
+								name: 'Markdown (Legacy)',
 								value: 'Markdown',
+							},
+							{
+								name: 'MarkdownV2',
+								value: 'MarkdownV2',
 							},
 							{
 								name: 'HTML',
@@ -1577,6 +1662,7 @@ export class Telegram implements INodeType {
 									'sendMessage',
 									'sendPhoto',
 									'sendVideo',
+									'sendDocument',
 								],
 							},
 						},
@@ -1606,6 +1692,29 @@ export class Telegram implements INodeType {
 						},
 						default: 0,
 						description: 'If the message is a reply, ID of the original message',
+					},
+					{
+						displayName: 'Message Thread ID',
+						name: 'message_thread_id',
+						type: 'number',
+						displayOptions: {
+							show: {
+								'/operation': [
+									'sendAnimation',
+									'sendAudio',
+									'sendChatAction',
+									'sendDocument',
+									'sendLocation',
+									'sendMediaGroup',
+									'sendMessage',
+									'sendPhoto',
+									'sendSticker',
+									'sendVideo',
+								],
+							},
+						},
+						default: 0,
+						description: 'The unique identifier of the forum topic',
 					},
 					{
 						displayName: 'Title',
@@ -1649,8 +1758,30 @@ export class Telegram implements INodeType {
 					},
 				],
 			},
+			...getSendAndWaitProperties(
+				[
+					{
+						displayName: 'Chat ID',
+						name: 'chatId',
+						type: 'string',
+						default: '',
+						required: true,
+						description:
+							'Unique identifier for the target chat or username of the target channel (in the format @channelusername). To find your chat ID ask @get_id_bot.',
+					},
+				],
+				'message',
+				undefined,
+				{
+					noButtonStyle: true,
+					defaultApproveLabel: '✅ Approve',
+					defaultDisapproveLabel: '❌ Decline',
+				},
+			).filter((p) => p.name !== 'subject'),
 		],
 	};
+
+	webhook = sendAndWaitWebhook;
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
@@ -1661,12 +1792,26 @@ export class Telegram implements INodeType {
 		// For Query string
 		let qs: IDataObject;
 
-		let requestMethod: string;
+		let requestMethod: IHttpRequestMethods;
 		let endpoint: string;
 
 		const operation = this.getNodeParameter('operation', 0);
 		const resource = this.getNodeParameter('resource', 0);
 		const binaryData = this.getNodeParameter('binaryData', 0, false);
+
+		const nodeVersion = this.getNode().typeVersion;
+		const instanceId = this.getInstanceId();
+
+		if (resource === 'message' && operation === SEND_AND_WAIT_OPERATION) {
+			body = createSendAndWaitMessageBody(this);
+
+			await apiRequest.call(this, 'POST', 'sendMessage', body);
+
+			const waitTill = configureWaitTillDate(this);
+
+			await this.putExecutionToWait(waitTill);
+			return [this.getInputData()];
+		}
 
 		for (let i = 0; i < items.length; i++) {
 			try {
@@ -1892,7 +2037,7 @@ export class Telegram implements INodeType {
 						body.text = this.getNodeParameter('text', i) as string;
 
 						// Add additional fields and replyMarkup
-						addAdditionalFields.call(this, body, i);
+						addAdditionalFields.call(this, body, i, nodeVersion, instanceId);
 					} else if (operation === 'sendMediaGroup') {
 						// ----------------------------------
 						//         message:sendMediaGroup
@@ -1962,7 +2107,6 @@ export class Telegram implements INodeType {
 				if (binaryData) {
 					const binaryPropertyName = this.getNodeParameter('binaryPropertyName', 0);
 					const itemBinaryData = items[i].binary![binaryPropertyName];
-					const dataBuffer = await this.helpers.getBinaryDataBuffer(i, binaryPropertyName);
 					const propertyName = getPropertyName(operation);
 					const fileName = this.getNodeParameter('additionalFields.fileName', 0, '') as string;
 
@@ -1977,12 +2121,19 @@ export class Telegram implements INodeType {
 						);
 					}
 
-					body.disable_notification = body.disable_notification?.toString() ?? 'false';
+					body.disable_notification = body.disable_notification?.toString() || 'false';
+
+					let uploadData: Buffer | Readable;
+					if (itemBinaryData.id) {
+						uploadData = await this.helpers.getBinaryStream(itemBinaryData.id);
+					} else {
+						uploadData = Buffer.from(itemBinaryData.data, BINARY_ENCODING);
+					}
 
 					const formData = {
 						...body,
 						[propertyName]: {
-							value: dataBuffer,
+							value: uploadData,
 							options: {
 								filename,
 								contentType: itemBinaryData.mimeType,
@@ -2009,29 +2160,29 @@ export class Telegram implements INodeType {
 							{
 								json: false,
 								encoding: null,
-								uri: `https://api.telegram.org/file/bot${credentials.accessToken}/${filePath}`,
+								uri: `${credentials.baseUrl}/file/bot${credentials.accessToken}/${filePath}`,
 								resolveWithFullResponse: true,
+								useStream: true,
 							},
 						);
 
 						const fileName = filePath.split('/').pop();
+
 						const data = await this.helpers.prepareBinaryData(
-							Buffer.from(file.body as string),
-							fileName,
+							file.body as Buffer,
+							fileName as string,
 						);
 
 						returnData.push({
 							json: responseData,
-							binary: {
-								data,
-							},
+							binary: { data },
 							pairedItem: { item: i },
 						});
 						continue;
 					}
 				} else if (resource === 'chat' && operation === 'administrators') {
 					const executionData = this.helpers.constructExecutionMetaData(
-						this.helpers.returnJsonArray(responseData.result),
+						this.helpers.returnJsonArray(responseData.result as IDataObject[]),
 						{ itemData: { item: i } },
 					);
 					returnData.push(...executionData);
@@ -2039,7 +2190,7 @@ export class Telegram implements INodeType {
 				}
 
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as IDataObject[]),
 					{ itemData: { item: i } },
 				);
 				returnData.push(...executionData);
@@ -2052,6 +2203,6 @@ export class Telegram implements INodeType {
 			}
 		}
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

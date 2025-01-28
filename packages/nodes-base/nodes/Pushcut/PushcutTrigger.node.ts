@@ -1,6 +1,11 @@
-import { IHookFunctions, IWebhookFunctions } from 'n8n-core';
-
-import { INodeType, INodeTypeDescription, IWebhookResponseData } from 'n8n-workflow';
+import {
+	type IHookFunctions,
+	type IWebhookFunctions,
+	type INodeType,
+	type INodeTypeDescription,
+	type IWebhookResponseData,
+	NodeConnectionType,
+} from 'n8n-workflow';
 
 import { pushcutApiRequest } from './GenericFunctions';
 
@@ -17,7 +22,7 @@ export class PushcutTrigger implements INodeType {
 			name: 'Pushcut Trigger',
 		},
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'pushcutApi',
@@ -44,7 +49,6 @@ export class PushcutTrigger implements INodeType {
 		],
 	};
 
-	// @ts-ignore (because of request)
 	webhookMethods = {
 		default: {
 			async checkExists(this: IHookFunctions): Promise<boolean> {
@@ -99,7 +103,7 @@ export class PushcutTrigger implements INodeType {
 					}
 
 					// Remove from the static workflow data so that it is clear
-					// that no webhooks are registred anymore
+					// that no webhooks are registered anymore
 					delete webhookData.webhookId;
 				}
 				return true;

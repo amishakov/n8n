@@ -1,15 +1,32 @@
-import { closestNumberDivisibleBy, getStyleTokenValue, isNumber } from '@/utils';
-import { NODE_OUTPUT_DEFAULT_KEY, STICKY_NODE_TYPE, QUICKSTART_NOTE_NAME } from '@/constants';
-import { EndpointStyle, IBounds, INodeUi, XYPosition } from '@/Interface';
-import { AnchorArraySpec, Connection, Endpoint, Overlay, OverlaySpec, PaintStyle } from 'jsplumb';
+import { isNumber, isValidNodeConnectionType } from '@/utils/typeGuards';
 import {
+	LIST_LIKE_NODE_OPERATIONS,
+	NODE_OUTPUT_DEFAULT_KEY,
+	NODE_POSITION_CONFLICT_ALLOWLIST,
+	SET_NODE_TYPE,
+	SPLIT_IN_BATCHES_NODE_TYPE,
+	STICKY_NODE_TYPE,
+} from '@/constants';
+import type { EndpointStyle, IBounds, INodeUi, XYPosition } from '@/Interface';
+import type { ArrayAnchorSpec, ConnectorSpec, OverlaySpec, PaintStyle } from '@jsplumb/common';
+import type { Connection, Endpoint, SelectOptions } from '@jsplumb/core';
+import { N8nConnector } from '@/plugins/connectors/N8nCustomConnector';
+import type {
+	AssignmentCollectionValue,
 	IConnection,
 	INode,
-	ITaskData,
 	INodeExecutionData,
-	NodeInputConnections,
 	INodeTypeDescription,
+	ITaskData,
+	NodeHint,
+	NodeInputConnections,
+	Workflow,
 } from 'n8n-workflow';
+import { NodeConnectionType, NodeHelpers } from 'n8n-workflow';
+import type { BrowserJsPlumbInstance } from '@jsplumb/browser-ui';
+import { EVENT_CONNECTION_MOUSEOUT, EVENT_CONNECTION_MOUSEOVER } from '@jsplumb/browser-ui';
+import { useUIStore } from '@/stores/ui.store';
+import type { StyleValue } from 'vue';
 
 /*
 	Canvas constants and functions.
@@ -24,8 +41,7 @@ export const OVERLAY_RUN_ITEMS_ID = 'run-items-label';
 export const OVERLAY_CONNECTION_ACTIONS_ID = 'connection-actions';
 export const JSPLUMB_FLOWCHART_STUB = 26;
 export const OVERLAY_INPUT_NAME_LABEL = 'input-name-label';
-export const OVERLAY_INPUT_NAME_LABEL_POSITION = [-3, 0.5];
-export const OVERLAY_INPUT_NAME_LABEL_POSITION_MOVED = [-4.5, 0.5];
+export const OVERLAY_INPUT_NAME_MOVED_CLASS = 'node-input-endpoint-label--moved';
 export const OVERLAY_OUTPUT_NAME_LABEL = 'output-name-label';
 export const GRID_SIZE = 20;
 
@@ -33,6 +49,9 @@ const MIN_X_TO_SHOW_OUTPUT_LABEL = 90;
 const MIN_Y_TO_SHOW_OUTPUT_LABEL = 100;
 
 export const NODE_SIZE = 100;
+export const DEFAULT_NODE_SIZE = [100, 100];
+export const CONFIGURATION_NODE_SIZE = [80, 80];
+export const CONFIGURABLE_NODE_SIZE = [256, 100];
 export const PLACEHOLDER_TRIGGER_NODE_SIZE = 100;
 export const DEFAULT_START_POSITION_X = 180;
 export const DEFAULT_START_POSITION_Y = 240;
@@ -58,20 +77,9 @@ export const DEFAULT_PLACEHOLDER_TRIGGER_BUTTON = {
 	},
 };
 
-export const WELCOME_STICKY_NODE = {
-	name: QUICKSTART_NOTE_NAME,
-	type: STICKY_NODE_TYPE,
-	typeVersion: 1,
-	position: [0, 0] as XYPosition,
-	parameters: {
-		height: 320,
-		width: 380,
-	},
-};
-
-export const CONNECTOR_FLOWCHART_TYPE = [
-	'N8nCustom',
-	{
+export const CONNECTOR_FLOWCHART_TYPE: ConnectorSpec = {
+	type: N8nConnector.type,
+	options: {
 		cornerRadius: 12,
 		stub: JSPLUMB_FLOWCHART_STUB + 10,
 		targetGap: 4,
@@ -80,21 +88,22 @@ export const CONNECTOR_FLOWCHART_TYPE = [
 		loopbackMinimum: LOOPBACK_MINIMUM, // minimum length before flowchart loops around
 		getEndpointOffset(endpoint: Endpoint) {
 			const indexOffset = 10; // stub offset between different endpoints of same node
-			const index = endpoint && endpoint.__meta ? endpoint.__meta.index : 0;
-			const totalEndpoints = endpoint && endpoint.__meta ? endpoint.__meta.totalEndpoints : 0;
+			const index = endpoint?.__meta ? endpoint.__meta.index : 0;
+			const totalEndpoints = endpoint?.__meta ? endpoint.__meta.totalEndpoints : 0;
 
 			const outputOverlay = getOverlay(endpoint, OVERLAY_OUTPUT_NAME_LABEL);
-			const labelOffset =
-				outputOverlay && outputOverlay.label && outputOverlay.label.length > 1 ? 10 : 0;
+			const outputOverlayLabel =
+				outputOverlay && 'label' in outputOverlay ? `${outputOverlay?.label}` : '';
+			const labelOffset = outputOverlayLabel.length > 1 ? 10 : 0;
 			const outputsOffset = totalEndpoints > 3 ? 24 : 0; // avoid intersecting plus
 
 			return index * indexOffset + labelOffset + outputsOffset;
 		},
 	},
-];
+};
 
 export const CONNECTOR_PAINT_STYLE_DEFAULT: PaintStyle = {
-	stroke: getStyleTokenValue('--color-foreground-dark'),
+	stroke: 'var(--color-foreground-dark)',
 	strokeWidth: 2,
 	outlineWidth: 12,
 	outlineStroke: 'transparent',
@@ -102,23 +111,83 @@ export const CONNECTOR_PAINT_STYLE_DEFAULT: PaintStyle = {
 
 export const CONNECTOR_PAINT_STYLE_PULL: PaintStyle = {
 	...CONNECTOR_PAINT_STYLE_DEFAULT,
-	stroke: getStyleTokenValue('--color-foreground-xdark'),
+	stroke: 'var(--color-foreground-xdark)',
 };
 
 export const CONNECTOR_PAINT_STYLE_PRIMARY = {
 	...CONNECTOR_PAINT_STYLE_DEFAULT,
-	stroke: getStyleTokenValue('--color-primary'),
+	stroke: 'var(--color-primary)',
 };
 
-export const CONNECTOR_PAINT_STYLE_SUCCESS = {
+export const CONNECTOR_PAINT_STYLE_DATA: PaintStyle = {
 	...CONNECTOR_PAINT_STYLE_DEFAULT,
-	stroke: getStyleTokenValue('--color-success-light'),
+	...{
+		dashstyle: '5 3',
+	},
+	stroke: 'var(--color-foreground-dark)',
+};
+
+export function isCanvasAugmentedType<T>(overlay: T): overlay is T & { canvas: HTMLElement } {
+	return typeof overlay === 'object' && overlay !== null && 'canvas' in overlay && !!overlay.canvas;
+}
+
+export const getConnectorColor = (type: NodeConnectionType, category?: string): string => {
+	if (category === 'error') {
+		return '--color-node-error-output-text-color';
+	}
+
+	if (type === NodeConnectionType.Main) {
+		return '--node-type-main-color';
+	}
+
+	return '--node-type-supplemental-connector-color';
+};
+
+export const getConnectorPaintStylePull = (connection: Connection): PaintStyle => {
+	const connectorColor = getConnectorColor(
+		connection.parameters.type as NodeConnectionType,
+		connection.parameters.category,
+	);
+	const additionalStyles: PaintStyle = {};
+	if (connection.parameters.type !== NodeConnectionType.Main) {
+		additionalStyles.dashstyle = '5 3';
+	}
+	return {
+		...CONNECTOR_PAINT_STYLE_PULL,
+		...(connectorColor ? { stroke: `var(${connectorColor})` } : {}),
+		...additionalStyles,
+	};
+};
+
+export const getConnectorPaintStyleDefault = (connection: Connection): PaintStyle => {
+	const connectorColor = getConnectorColor(
+		connection.parameters.type as NodeConnectionType,
+		connection.parameters.category,
+	);
+	return {
+		...CONNECTOR_PAINT_STYLE_DEFAULT,
+		...(connectorColor ? { stroke: `var(${connectorColor})` } : {}),
+	};
+};
+
+export const getConnectorPaintStyleData = (
+	connection: Connection,
+	category?: string,
+): PaintStyle => {
+	const connectorColor = getConnectorColor(
+		connection.parameters.type as NodeConnectionType,
+		category,
+	);
+	return {
+		...CONNECTOR_PAINT_STYLE_DATA,
+		...(connectorColor ? { stroke: `var(${connectorColor})` } : {}),
+	};
 };
 
 export const CONNECTOR_ARROW_OVERLAYS: OverlaySpec[] = [
-	[
-		'Arrow',
-		{
+	{
+		type: 'Arrow',
+		options: {
 			id: OVERLAY_ENDPOINT_ARROW_ID,
 			location: 1,
 			width: 12,
@@ -126,10 +195,10 @@ export const CONNECTOR_ARROW_OVERLAYS: OverlaySpec[] = [
 			length: 10,
 			visible: true,
 		},
-	],
-	[
-		'Arrow',
-		{
+	},
+	{
+		type: 'Arrow',
+		options: {
 			id: OVERLAY_MIDPOINT_ARROW_ID,
 			location: 0.5,
 			width: 12,
@@ -137,90 +206,155 @@ export const CONNECTOR_ARROW_OVERLAYS: OverlaySpec[] = [
 			length: 10,
 			visible: false,
 		},
-	],
+	},
 ];
 
-export const ANCHOR_POSITIONS: {
-	[key: string]: {
-		[key: number]: AnchorArraySpec[];
-	};
-} = {
-	input: {
-		1: [[0.01, 0.5, -1, 0]],
-		2: [
-			[0.01, 0.3, -1, 0],
-			[0.01, 0.7, -1, 0],
-		],
-		3: [
-			[0.01, 0.25, -1, 0],
-			[0.01, 0.5, -1, 0],
-			[0.01, 0.75, -1, 0],
-		],
-		4: [
-			[0.01, 0.2, -1, 0],
-			[0.01, 0.4, -1, 0],
-			[0.01, 0.6, -1, 0],
-			[0.01, 0.8, -1, 0],
-		],
-	},
-	output: {
-		1: [[0.99, 0.5, 1, 0]],
-		2: [
-			[0.99, 0.3, 1, 0],
-			[0.99, 0.7, 1, 0],
-		],
-		3: [
-			[0.99, 0.25, 1, 0],
-			[0.99, 0.5, 1, 0],
-			[0.99, 0.75, 1, 0],
-		],
-		4: [
-			[0.99, 0.2, 1, 0],
-			[0.99, 0.4, 1, 0],
-			[0.99, 0.6, 1, 0],
-			[0.99, 0.8, 1, 0],
-		],
-	},
+export const getAnchorPosition = (
+	connectionType: NodeConnectionType,
+	type: 'input' | 'output',
+	amount: number,
+	spacerIndexes: number[] = [],
+): ArrayAnchorSpec[] => {
+	if (connectionType === NodeConnectionType.Main) {
+		const anchors: ArrayAnchorSpec[] = [];
+		const x = type === 'input' ? 0.01 : 0.99;
+		const ox = type === 'input' ? -1 : 1;
+		const oy = 0;
+		const stepSize = 1 / (amount + 1); // +1 to not touch the node boundaries
+
+		for (let i = 1; i <= amount; i++) {
+			const y = stepSize * i; // Multiply by index to set position
+			anchors.push([x, y, ox, oy]);
+		}
+
+		return anchors;
+	}
+
+	const y = type === 'input' ? 0.99 : 0.01;
+	const oy = type === 'input' ? 1 : -1;
+	const ox = 0;
+
+	const spacedAmount = amount + spacerIndexes.length;
+	const returnPositions: ArrayAnchorSpec[] = [];
+	for (let i = 0; i < spacedAmount; i++) {
+		const stepSize = 1 / (spacedAmount + 1);
+		let x = stepSize * i;
+		x += stepSize;
+
+		if (spacerIndexes.includes(i)) {
+			continue;
+		}
+
+		returnPositions.push([x, y, ox, oy]);
+	}
+
+	return returnPositions;
+};
+
+export const getScope = (type?: NodeConnectionType): NodeConnectionType | undefined => {
+	if (!type || type === NodeConnectionType.Main) {
+		return undefined;
+	}
+
+	return type;
+};
+
+export const getEndpointScope = (
+	endpointType: NodeConnectionType | string,
+): NodeConnectionType | undefined => {
+	if (isValidNodeConnectionType(endpointType)) {
+		return getScope(endpointType);
+	}
+
+	return undefined;
 };
 
 export const getInputEndpointStyle = (
 	nodeTypeData: INodeTypeDescription,
 	color: string,
-): EndpointStyle => ({
-	width: 8,
-	height: nodeTypeData && nodeTypeData.outputs.length > 2 ? 18 : 20,
-	fill: getStyleTokenValue(color),
-	stroke: getStyleTokenValue(color),
-	lineWidth: 0,
+	connectionType: NodeConnectionType = NodeConnectionType.Main,
+): EndpointStyle => {
+	let width = 8;
+	let height = nodeTypeData && nodeTypeData.outputs.length > 2 ? 18 : 20;
+
+	if (connectionType !== NodeConnectionType.Main) {
+		const temp = width;
+		width = height;
+		height = temp;
+	}
+
+	return {
+		width,
+		height,
+		fill: `var(${color})`,
+		stroke: `var(${color})`,
+		lineWidth: 0,
+	};
+};
+
+export const getInputNameOverlay = (
+	labelText: string,
+	inputName: string,
+	required?: boolean,
+): OverlaySpec => ({
+	type: 'Custom',
+	options: {
+		id: OVERLAY_INPUT_NAME_LABEL,
+		visible: true,
+		location: [-1, -1],
+		create: (_: Endpoint) => {
+			const label = document.createElement('div');
+			label.innerHTML = labelText;
+			if (required) {
+				label.innerHTML += ' <strong style="color: var(--color-primary)">*</strong>';
+			}
+			label.classList.add('node-input-endpoint-label');
+			label.classList.add(`node-connection-type-${inputName ?? 'main'}`);
+			if (inputName !== NodeConnectionType.Main) {
+				label.classList.add('node-input-endpoint-label--data');
+			}
+			return label;
+		},
+	},
 });
 
-export const getInputNameOverlay = (label: string): OverlaySpec => [
-	'Label',
-	{
-		id: OVERLAY_INPUT_NAME_LABEL,
-		location: OVERLAY_INPUT_NAME_LABEL_POSITION,
-		label,
-		cssClass: 'node-input-endpoint-label',
-		visible: true,
-	},
-];
-
-export const getOutputEndpointStyle = (nodeTypeData: INodeTypeDescription, color: string) => ({
-	radius: nodeTypeData && nodeTypeData.outputs.length > 2 ? 7 : 9,
-	fill: getStyleTokenValue(color),
+export const getOutputEndpointStyle = (
+	nodeTypeData: INodeTypeDescription,
+	color: string,
+): PaintStyle => ({
+	strokeWidth: nodeTypeData && nodeTypeData.outputs.length > 2 ? 7 : 9,
+	fill: `var(${color})`,
 	outlineStroke: 'none',
 });
 
-export const getOutputNameOverlay = (label: string): OverlaySpec => [
-	'Label',
-	{
+export const getOutputNameOverlay = (
+	labelText: string,
+	outputName: NodeConnectionType,
+	category?: string,
+): OverlaySpec => ({
+	type: 'Custom',
+	options: {
 		id: OVERLAY_OUTPUT_NAME_LABEL,
-		location: [1.9, 0.5],
-		label,
-		cssClass: 'node-output-endpoint-label',
 		visible: true,
+		create: (ep: Endpoint) => {
+			const label = document.createElement('div');
+			label.innerHTML = labelText;
+			label.classList.add('node-output-endpoint-label');
+
+			if (ep?.__meta?.endpointLabelLength) {
+				label.setAttribute('data-endpoint-label-length', `${ep?.__meta?.endpointLabelLength}`);
+			}
+			label.classList.add(`node-connection-type-${getScope(outputName) ?? 'main'}`);
+			if (outputName !== NodeConnectionType.Main) {
+				label.classList.add('node-output-endpoint-label--data');
+			}
+			if (category) {
+				label.classList.add(`node-connection-category-${category}`);
+			}
+			return label;
+		},
 	},
-];
+});
 
 export const addOverlays = (connection: Connection, overlays: OverlaySpec[]) => {
 	overlays.forEach((overlay: OverlaySpec) => {
@@ -228,14 +362,14 @@ export const addOverlays = (connection: Connection, overlays: OverlaySpec[]) => 
 	});
 };
 
-export const getLeftmostTopNode = (nodes: INodeUi[]): INodeUi => {
+export const getLeftmostTopNode = <T extends { position: XYPosition }>(nodes: T[]): T => {
 	return nodes.reduce((leftmostTop, node) => {
 		if (node.position[0] > leftmostTop.position[0] || node.position[1] > leftmostTop.position[1]) {
 			return leftmostTop;
 		}
 
 		return node;
-	});
+	}, nodes[0]);
 };
 
 export const getWorkflowCorners = (nodes: INodeUi[]): IBounds => {
@@ -299,28 +433,41 @@ export const hideOverlay = (item: Connection | Endpoint, overlayId: string) => {
 };
 
 export const showOrHideMidpointArrow = (connection: Connection) => {
-	if (!connection || !connection.endpoints || connection.endpoints.length !== 2) {
+	if (!connection?.endpoints || connection.endpoints.length !== 2) {
 		return;
 	}
-
 	const hasItemsLabel = !!getOverlay(connection, OVERLAY_RUN_ITEMS_ID);
 
 	const sourceEndpoint = connection.endpoints[0];
 	const targetEndpoint = connection.endpoints[1];
-
-	const sourcePosition = sourceEndpoint.anchor.lastReturnValue[0];
-	const targetPosition = targetEndpoint.anchor.lastReturnValue
-		? targetEndpoint.anchor.lastReturnValue[0]
-		: sourcePosition + 1; // lastReturnValue is null when moving connections from node to another
+	const sourcePosition = sourceEndpoint._anchor.computedPosition?.curX ?? 0;
+	const targetPosition = targetEndpoint._anchor.computedPosition?.curX ?? sourcePosition + 1;
 
 	const minimum = hasItemsLabel ? 150 : 0;
 	const isBackwards = sourcePosition >= targetPosition;
 	const isTooLong = Math.abs(sourcePosition - targetPosition) >= minimum;
+	const isActionsOverlayHovered = getOverlay(
+		connection,
+		OVERLAY_CONNECTION_ACTIONS_ID,
+	)?.component.isHover();
+	const isConnectionHovered = connection.isHover();
 
 	const arrow = getOverlay(connection, OVERLAY_MIDPOINT_ARROW_ID);
+	const isArrowVisible =
+		connection.parameters.type === NodeConnectionType.Main &&
+		isBackwards &&
+		isTooLong &&
+		!isActionsOverlayHovered &&
+		!isConnectionHovered &&
+		!connection.instance.isConnectionBeingDragged;
+
 	if (arrow) {
-		arrow.setVisible(isBackwards && isTooLong);
+		arrow.setVisible(isArrowVisible);
 		arrow.setLocation(hasItemsLabel ? 0.6 : 0.5);
+
+		if (isCanvasAugmentedType(arrow)) {
+			connection.instance.repaint(arrow.canvas);
+		}
 	}
 };
 
@@ -329,8 +476,8 @@ export const getConnectorLengths = (connection: Connection): [number, number] =>
 		return [0, 0];
 	}
 	const bounds = connection.connector.bounds;
-	const diffX = Math.abs(bounds.maxX - bounds.minX);
-	const diffY = Math.abs(bounds.maxY - bounds.minY);
+	const diffX = Math.abs(bounds.xmax - bounds.xmin);
+	const diffY = Math.abs(bounds.ymax - bounds.ymin);
 
 	return [diffX, diffY];
 };
@@ -339,37 +486,33 @@ const isLoopingBackwards = (connection: Connection) => {
 	const sourceEndpoint = connection.endpoints[0];
 	const targetEndpoint = connection.endpoints[1];
 
-	const sourcePosition = sourceEndpoint.anchor.lastReturnValue[0];
-	const targetPosition = targetEndpoint.anchor.lastReturnValue[0];
+	const sourcePosition = sourceEndpoint._anchor.computedPosition?.curX ?? 0;
+	const targetPosition = targetEndpoint._anchor.computedPosition?.curX ?? 0;
 
 	return targetPosition - sourcePosition < -1 * LOOPBACK_MINIMUM;
 };
 
 export const showOrHideItemsLabel = (connection: Connection) => {
-	if (!connection || !connection.connector) {
-		return;
-	}
+	if (!connection?.connector) return;
 
 	const overlay = getOverlay(connection, OVERLAY_RUN_ITEMS_ID);
-	if (!overlay) {
-		return;
-	}
+	if (!overlay) return;
 
 	const actionsOverlay = getOverlay(connection, OVERLAY_CONNECTION_ACTIONS_ID);
-	if (actionsOverlay && actionsOverlay.visible) {
+	const isActionsOverlayHovered = actionsOverlay?.component.isHover();
+
+	if (isActionsOverlayHovered) {
 		overlay.setVisible(false);
 		return;
 	}
 
 	const [diffX, diffY] = getConnectorLengths(connection);
+	const isHidden = diffX < MIN_X_TO_SHOW_OUTPUT_LABEL && diffY < MIN_Y_TO_SHOW_OUTPUT_LABEL;
 
-	if (diffX < MIN_X_TO_SHOW_OUTPUT_LABEL && diffY < MIN_Y_TO_SHOW_OUTPUT_LABEL) {
-		overlay.setVisible(false);
-	} else {
-		overlay.setVisible(true);
-	}
-
-	const innerElement = overlay.canvas && overlay.canvas.querySelector('span');
+	overlay.setVisible(!isHidden);
+	const innerElement = isCanvasAugmentedType(overlay)
+		? overlay.canvas.querySelector('span')
+		: undefined;
 	if (innerElement) {
 		if (diffY === 0 || isLoopingBackwards(connection)) {
 			innerElement.classList.add('floating');
@@ -401,6 +544,25 @@ const canUsePosition = (position1: XYPosition, position2: XYPosition) => {
 	return true;
 };
 
+const closestNumberDivisibleBy = (inputNumber: number, divisibleBy: number): number => {
+	const quotient = Math.ceil(inputNumber / divisibleBy);
+
+	// 1st possible closest number
+	const inputNumber1 = divisibleBy * quotient;
+
+	// 2nd possible closest number
+	const inputNumber2 =
+		inputNumber * divisibleBy > 0 ? divisibleBy * (quotient + 1) : divisibleBy * (quotient - 1);
+
+	// if true, then inputNumber1 is the required closest number
+	if (Math.abs(inputNumber - inputNumber1) < Math.abs(inputNumber - inputNumber2)) {
+		return inputNumber1;
+	}
+
+	// else inputNumber2 is the required closest number
+	return inputNumber2;
+};
+
 export const getNewNodePosition = (
 	nodes: INodeUi[],
 	newPosition: XYPosition,
@@ -421,36 +583,31 @@ export const getNewNodePosition = (
 		conflictFound = false;
 		for (i = 0; i < nodes.length; i++) {
 			node = nodes[i];
+
+			if (NODE_POSITION_CONFLICT_ALLOWLIST.includes(node.type)) {
+				continue;
+			}
+
 			if (!canUsePosition(node.position, targetPosition)) {
 				conflictFound = true;
 				break;
 			}
 		}
 
-		if (conflictFound === true) {
+		if (conflictFound) {
 			targetPosition[0] += movePosition[0];
 			targetPosition[1] += movePosition[1];
 		}
-	} while (conflictFound === true);
+	} while (conflictFound);
 
 	return targetPosition;
 };
 
 export const getMousePosition = (e: MouseEvent | TouchEvent): XYPosition => {
 	// @ts-ignore
-	const x =
-		e.pageX !== undefined
-			? e.pageX
-			: e.touches && e.touches[0] && e.touches[0].pageX
-			? e.touches[0].pageX
-			: 0;
+	const x = e.pageX !== undefined ? e.pageX : e.touches?.[0]?.pageX ? e.touches[0].pageX : 0;
 	// @ts-ignore
-	const y =
-		e.pageY !== undefined
-			? e.pageY
-			: e.touches && e.touches[0] && e.touches[0].pageY
-			? e.touches[0].pageY
-			: 0;
+	const y = e.pageY !== undefined ? e.pageY : e.touches?.[0]?.pageY ? e.touches[0].pageY : 0;
 
 	return [x, y];
 };
@@ -474,7 +631,7 @@ export const getBackgroundStyles = (
 	scale: number,
 	offsetPosition: XYPosition,
 	executionPreview: boolean,
-) => {
+): StyleValue => {
 	const squareSize = GRID_SIZE * scale;
 	const dotSize = 1 * scale;
 	const dotPosition = (GRID_SIZE / 2) * scale;
@@ -482,61 +639,80 @@ export const getBackgroundStyles = (
 	if (executionPreview) {
 		return {
 			'background-image':
-				'linear-gradient(135deg, #f9f9fb 25%, #ffffff 25%, #ffffff 50%, #f9f9fb 50%, #f9f9fb 75%, #ffffff 75%, #ffffff 100%)',
+				'linear-gradient(135deg, var(--color-canvas-read-only-line) 25%, var(--color-canvas-background) 25%, var(--color-canvas-background) 50%, var(--color-canvas-read-only-line) 50%, var(--color-canvas-read-only-line) 75%, var(--color-canvas-background) 75%, var(--color-canvas-background) 100%)',
 			'background-size': `${squareSize}px ${squareSize}px`,
 			'background-position': `left ${offsetPosition[0]}px top ${offsetPosition[1]}px`,
 		};
 	}
 
-	const styles: object = {
+	const styles: StyleValue = {
 		'background-size': `${squareSize}px ${squareSize}px`,
 		'background-position': `left ${offsetPosition[0]}px top ${offsetPosition[1]}px`,
 	};
 	if (squareSize > 10.5) {
-		const dotColor = getStyleTokenValue('--color-canvas-dot');
 		return {
 			...styles,
-			'background-image': `radial-gradient(circle at ${dotPosition}px ${dotPosition}px, ${dotColor} ${dotSize}px, transparent 0)`,
+			'background-image': `radial-gradient(circle at ${dotPosition}px ${dotPosition}px, var(--color-canvas-dot) ${dotSize}px, transparent 0)`,
 		};
 	}
 
 	return styles;
 };
 
-export const hideConnectionActions = (connection: Connection | null) => {
-	if (connection && connection.connector) {
-		hideOverlay(connection, OVERLAY_CONNECTION_ACTIONS_ID);
-		showOrHideItemsLabel(connection);
-		showOrHideMidpointArrow(connection);
-	}
+export const hideConnectionActions = (connection: Connection) => {
+	connection.instance.setSuspendDrawing(true);
+	hideOverlay(connection, OVERLAY_CONNECTION_ACTIONS_ID);
+	showOrHideMidpointArrow(connection);
+	showOrHideItemsLabel(connection);
+	connection.instance.setSuspendDrawing(false);
+	(connection.endpoints || []).forEach((endpoint) => {
+		connection.instance.repaint(endpoint.element);
+	});
 };
 
-export const showConnectionActions = (connection: Connection | null) => {
-	if (connection && connection.connector) {
-		showOverlay(connection, OVERLAY_CONNECTION_ACTIONS_ID);
-		hideOverlay(connection, OVERLAY_RUN_ITEMS_ID);
-		if (!getOverlay(connection, OVERLAY_RUN_ITEMS_ID)) {
-			hideOverlay(connection, OVERLAY_MIDPOINT_ARROW_ID);
-		}
+export const showConnectionActions = (connection: Connection) => {
+	showOverlay(connection, OVERLAY_CONNECTION_ACTIONS_ID);
+	hideOverlay(connection, OVERLAY_RUN_ITEMS_ID);
+	if (!getOverlay(connection, OVERLAY_RUN_ITEMS_ID)) {
+		hideOverlay(connection, OVERLAY_MIDPOINT_ARROW_ID);
 	}
+
+	(connection.endpoints || []).forEach((endpoint) => {
+		connection.instance.repaint(endpoint.element);
+	});
 };
 
-export const getOutputSummary = (data: ITaskData[], nodeConnections: NodeInputConnections) => {
+export const getOutputSummary = (
+	data: ITaskData[],
+	nodeConnections: NodeInputConnections,
+	connectionType: NodeConnectionType,
+) => {
 	const outputMap: {
 		[sourceOutputIndex: string]: {
 			[targetNodeName: string]: {
-				[targetInputIndex: string]: { total: number; iterations: number };
+				[targetInputIndex: string]: {
+					total: number;
+					iterations: number;
+					isArtificialRecoveredEventItem?: boolean;
+				};
 			};
 		};
 	} = {};
 
 	data.forEach((run: ITaskData) => {
-		if (!run.data || !run.data.main) {
+		if (!run?.data?.[connectionType]) {
 			return;
 		}
 
-		run.data.main.forEach((output: INodeExecutionData[] | null, i: number) => {
+		run.data[connectionType].forEach((output: INodeExecutionData[] | null, i: number) => {
 			const sourceOutputIndex = i;
+
+			// executionData that was recovered by recoverEvents in the CLI will have an isArtificialRecoveredEventItem property
+			// to indicate that it was not part of the original executionData
+			// we do not want to count these items in the summary
+			// if (output?.[0]?.json?.isArtificialRecoveredEventItem) {
+			// 	return outputMap;
+			// }
 
 			if (!outputMap[sourceOutputIndex]) {
 				outputMap[sourceOutputIndex] = {};
@@ -573,10 +749,19 @@ export const getOutputSummary = (data: ITaskData[], nodeConnections: NodeInputCo
 					};
 				}
 
-				outputMap[sourceOutputIndex][targetNodeName][targetInputIndex].total += output
-					? output.length
-					: 0;
-				outputMap[sourceOutputIndex][targetNodeName][targetInputIndex].iterations += output ? 1 : 0;
+				if (output?.[0]?.json?.isArtificialRecoveredEventItem) {
+					outputMap[sourceOutputIndex][targetNodeName][
+						targetInputIndex
+					].isArtificialRecoveredEventItem = true;
+					outputMap[sourceOutputIndex][targetNodeName][targetInputIndex].total = 0;
+				} else {
+					outputMap[sourceOutputIndex][targetNodeName][targetInputIndex].total += output
+						? output.length
+						: 0;
+					outputMap[sourceOutputIndex][targetNodeName][targetInputIndex].iterations += output
+						? 1
+						: 0;
+				}
 			});
 		});
 	});
@@ -586,11 +771,16 @@ export const getOutputSummary = (data: ITaskData[], nodeConnections: NodeInputCo
 
 export const resetConnection = (connection: Connection) => {
 	connection.removeOverlay(OVERLAY_RUN_ITEMS_ID);
-	connection.setPaintStyle(CONNECTOR_PAINT_STYLE_DEFAULT);
+	connection.removeClass('success');
 	showOrHideMidpointArrow(connection);
-	if (connection.canvas) {
-		connection.canvas.classList.remove('success');
-	}
+	connection.setPaintStyle(getConnectorPaintStyleDefault(connection));
+};
+
+export const recoveredConnection = (connection: Connection) => {
+	connection.removeOverlay(OVERLAY_RUN_ITEMS_ID);
+	connection.addClass('success');
+	showOrHideMidpointArrow(connection);
+	connection.setPaintStyle(CONNECTOR_PAINT_STYLE_PRIMARY);
 };
 
 export const getRunItemsLabel = (output: { total: number; iterations: number }): string => {
@@ -602,29 +792,70 @@ export const getRunItemsLabel = (output: { total: number; iterations: number }):
 
 export const addConnectionOutputSuccess = (
 	connection: Connection,
-	output: { total: number; iterations: number },
+	output: { total: number; iterations: number; classNames?: string[] },
 ) => {
-	connection.setPaintStyle(CONNECTOR_PAINT_STYLE_SUCCESS);
-	if (connection.canvas) {
-		connection.canvas.classList.add('success');
+	const classNames: string[] = ['success'];
+
+	if (output.classNames) {
+		classNames.push(...output.classNames);
 	}
 
+	connection.addClass(classNames.join(' '));
 	if (getOverlay(connection, OVERLAY_RUN_ITEMS_ID)) {
 		connection.removeOverlay(OVERLAY_RUN_ITEMS_ID);
 	}
 
-	connection.addOverlay([
-		'Label',
-		{
-			id: OVERLAY_RUN_ITEMS_ID,
-			label: `<span>${getRunItemsLabel(output)}</span>`,
-			cssClass: 'connection-run-items-label',
-			location: 0.5,
-		},
-	]);
+	if (connection.parameters.type === NodeConnectionType.Main) {
+		const overlay = connection.addOverlay({
+			type: 'Custom',
+			options: {
+				id: OVERLAY_RUN_ITEMS_ID,
+				create() {
+					const container = document.createElement('div');
+					const span = document.createElement('span');
+
+					container.classList.add(...['connection-run-items-label', ...classNames]);
+					span.classList.add('floating');
+					span.innerHTML = getRunItemsLabel(output);
+					container.appendChild(span);
+					return container;
+				},
+				location: 0.5,
+			},
+		});
+		overlay.setVisible(true);
+	}
 
 	showOrHideItemsLabel(connection);
 	showOrHideMidpointArrow(connection);
+
+	(connection.endpoints || []).forEach((endpoint) => {
+		connection.instance.repaint(endpoint.element);
+	});
+};
+
+export const addClassesToOverlays = ({
+	connection,
+	overlayIds,
+	classNames,
+	includeConnector,
+}: {
+	connection: Connection;
+	overlayIds: string[];
+	classNames: string[];
+	includeConnector?: boolean;
+}) => {
+	overlayIds.forEach((overlayId) => {
+		const overlay = getOverlay(connection, overlayId);
+
+		if (overlay && isCanvasAugmentedType(overlay)) {
+			overlay.canvas?.classList.add(...classNames);
+		}
+
+		if (includeConnector && isCanvasAugmentedType(connection.connector)) {
+			connection.connector.canvas?.classList.add(...classNames);
+		}
+	});
 };
 
 const getContentDimensions = (): { editorWidth: number; editorHeight: number } => {
@@ -650,6 +881,7 @@ export const getZoomToFit = (
 	const { minX, minY, maxX, maxY } = getWorkflowCorners(nodes);
 	const { editorWidth, editorHeight } = getContentDimensions();
 	const footerHeight = addFooterPadding ? 200 : 100;
+	const uiStore = useUIStore();
 
 	const PADDING = NODE_SIZE * 4;
 
@@ -665,7 +897,10 @@ export const getZoomToFit = (
 	xOffset += (editorWidth - (maxX - minX) * zoomLevel) / 2; // add padding to center workflow
 
 	let yOffset = minY * -1 * zoomLevel; // find top right corner
-	yOffset += (editorHeight - (maxY - minY + footerHeight) * zoomLevel) / 2; // add padding to center workflow
+	yOffset +=
+		(editorHeight -
+			(maxY - minY + footerHeight - uiStore.headerHeight + uiStore.bannersHeight) * zoomLevel) /
+		2; // add padding to center workflow
 
 	return {
 		zoomLevel,
@@ -677,9 +912,10 @@ export const getZoomToFit = (
 };
 
 export const showDropConnectionState = (connection: Connection, targetEndpoint?: Endpoint) => {
-	if (connection && connection.connector) {
+	if (connection?.connector) {
+		const connector = connection.connector as N8nConnector;
 		if (targetEndpoint) {
-			connection.connector.setTargetEndpoint(targetEndpoint);
+			connector.setTargetEndpoint(targetEndpoint);
 		}
 		connection.setPaintStyle(CONNECTOR_PAINT_STYLE_PRIMARY);
 		hideOverlay(connection, OVERLAY_DROP_NODE_ID);
@@ -687,31 +923,65 @@ export const showDropConnectionState = (connection: Connection, targetEndpoint?:
 };
 
 export const showPullConnectionState = (connection: Connection) => {
-	if (connection && connection.connector) {
-		connection.connector.resetTargetEndpoint();
-		connection.setPaintStyle(CONNECTOR_PAINT_STYLE_PULL);
+	if (connection?.connector) {
+		const connector = connection.connector as N8nConnector;
+		connector.resetTargetEndpoint();
+		connection.setPaintStyle(getConnectorPaintStylePull(connection));
 		showOverlay(connection, OVERLAY_DROP_NODE_ID);
 	}
 };
 
 export const resetConnectionAfterPull = (connection: Connection) => {
-	if (connection && connection.connector) {
-		connection.connector.resetTargetEndpoint();
-		connection.setPaintStyle(CONNECTOR_PAINT_STYLE_DEFAULT);
+	if (connection?.connector) {
+		const connector = connection.connector as N8nConnector;
+		connector.resetTargetEndpoint();
+		connection.setPaintStyle(getConnectorPaintStyleDefault(connection));
 	}
 };
 
-export const resetInputLabelPosition = (targetEndpoint: Endpoint) => {
+export const resetInputLabelPosition = (targetEndpoint: Connection | Endpoint) => {
 	const inputNameOverlay = getOverlay(targetEndpoint, OVERLAY_INPUT_NAME_LABEL);
 	if (inputNameOverlay) {
-		inputNameOverlay.setLocation(OVERLAY_INPUT_NAME_LABEL_POSITION);
+		targetEndpoint.instance.removeOverlayClass(inputNameOverlay, OVERLAY_INPUT_NAME_MOVED_CLASS);
+	}
+};
+
+export const hideOutputNameLabel = (sourceEndpoint: Connection | Endpoint) => {
+	hideOverlay(sourceEndpoint, OVERLAY_OUTPUT_NAME_LABEL);
+};
+
+export const showOutputNameLabel = (
+	sourceEndpoint: Connection | Endpoint,
+	connection: Connection,
+) => {
+	const outputNameOverlay = getOverlay(sourceEndpoint, OVERLAY_OUTPUT_NAME_LABEL);
+	if (outputNameOverlay) {
+		outputNameOverlay.setVisible(true);
+		(connection.endpoints || []).forEach((endpoint) => {
+			connection.instance.repaint(endpoint.element);
+		});
 	}
 };
 
 export const moveBackInputLabelPosition = (targetEndpoint: Endpoint) => {
 	const inputNameOverlay = getOverlay(targetEndpoint, OVERLAY_INPUT_NAME_LABEL);
 	if (inputNameOverlay) {
-		inputNameOverlay.setLocation(OVERLAY_INPUT_NAME_LABEL_POSITION_MOVED);
+		targetEndpoint.instance.addOverlayClass(inputNameOverlay, OVERLAY_INPUT_NAME_MOVED_CLASS);
+	}
+};
+
+export const addConnectionTestData = (
+	source: HTMLElement,
+	target: HTMLElement,
+	el: HTMLElement | undefined,
+) => {
+	// TODO: Only do this if running in test mode
+	const sourceNodeName = source.getAttribute('data-name')?.toString();
+	const targetNodeName = target.getAttribute('data-name')?.toString();
+
+	if (el && sourceNodeName && targetNodeName) {
+		el.setAttribute('data-source-node', sourceNodeName);
+		el.setAttribute('data-target-node', targetNodeName);
 	}
 };
 
@@ -720,58 +990,339 @@ export const addConnectionActionsOverlay = (
 	onDelete: Function,
 	onAdd: Function,
 ) => {
-	if (getOverlay(connection, OVERLAY_CONNECTION_ACTIONS_ID)) {
-		return; // avoid free floating actions when moving connection from one node to another
-	}
-	connection.addOverlay([
-		'Label',
-		{
+	const overlay = connection.addOverlay({
+		type: 'Custom',
+		options: {
 			id: OVERLAY_CONNECTION_ACTIONS_ID,
-			label: `<div class="add">${getIcon('plus')}</div> <div class="delete">${getIcon(
-				'trash',
-			)}</div>`,
-			cssClass: OVERLAY_CONNECTION_ACTIONS_ID,
-			visible: false,
-			events: {
-				mousedown: (overlay: Overlay, event: MouseEvent) => {
-					const element = event.target as HTMLElement;
-					if (
-						element.classList.contains('delete') ||
-						(element.parentElement && element.parentElement.classList.contains('delete'))
-					) {
-						onDelete();
-					} else if (
-						element.classList.contains('add') ||
-						(element.parentElement && element.parentElement.classList.contains('add'))
-					) {
-						onAdd();
-					}
-				},
+			create: (component: Connection) => {
+				const div = document.createElement('div');
+				const deleteButton = document.createElement('button');
+
+				div.classList.add(OVERLAY_CONNECTION_ACTIONS_ID);
+				addConnectionTestData(component.source, component.target, div);
+
+				deleteButton.innerHTML = getIcon('trash');
+				deleteButton.addEventListener('click', () => onDelete());
+				// We have to manually trigger connection mouse events because the overlay
+				// is not part of the connection element
+				div.addEventListener('mouseout', () =>
+					connection.instance.fire(EVENT_CONNECTION_MOUSEOUT, component),
+				);
+				div.addEventListener('mouseover', () =>
+					connection.instance.fire(EVENT_CONNECTION_MOUSEOVER, component),
+				);
+
+				if (connection.parameters.type === NodeConnectionType.Main) {
+					const addButton = document.createElement('button');
+					addButton.classList.add('add');
+					addButton.innerHTML = getIcon('plus');
+					addButton.addEventListener('click', () => onAdd());
+					div.appendChild(addButton);
+					deleteButton.classList.add('delete');
+				} else {
+					deleteButton.classList.add('delete-single');
+				}
+
+				div.appendChild(deleteButton);
+				return div;
 			},
 		},
-	]);
+	});
+
+	overlay.setVisible(false);
 };
 
-export const getOutputEndpointUUID = (nodeId: string, outputIndex: number) => {
-	return `${nodeId}${OUTPUT_UUID_KEY}${outputIndex}`;
+export const getOutputEndpointUUID = (
+	nodeId: string,
+	connectionType: NodeConnectionType,
+	outputIndex: number,
+) => {
+	return `${nodeId}${OUTPUT_UUID_KEY}${getScope(connectionType) ?? ''}${outputIndex}`;
 };
 
-export const getInputEndpointUUID = (nodeId: string, inputIndex: number) => {
-	return `${nodeId}${INPUT_UUID_KEY}${inputIndex}`;
+export const getInputEndpointUUID = (
+	nodeId: string,
+	connectionType: NodeConnectionType,
+	inputIndex: number,
+) => {
+	return `${nodeId}${INPUT_UUID_KEY}${getScope(connectionType) ?? ''}${inputIndex}`;
 };
 
-export const getFixedNodesList = (workflowNodes: INode[]) => {
+export const getFixedNodesList = <T extends { position: XYPosition }>(workflowNodes: T[]): T[] => {
 	const nodes = [...workflowNodes];
 
-	const leftmostTop = getLeftmostTopNode(nodes);
+	if (nodes.length) {
+		const leftmostTop = getLeftmostTopNode(nodes);
 
-	const diffX = DEFAULT_START_POSITION_X - leftmostTop.position[0];
-	const diffY = DEFAULT_START_POSITION_Y - leftmostTop.position[1];
+		const diffX = DEFAULT_START_POSITION_X - leftmostTop.position[0];
+		const diffY = DEFAULT_START_POSITION_Y - leftmostTop.position[1];
 
-	nodes.map((node) => {
-		node.position[0] += diffX + NODE_SIZE * 2;
-		node.position[1] += diffY;
-	});
+		nodes.forEach((node) => {
+			node.position[0] += diffX + NODE_SIZE * 2;
+			node.position[1] += diffY;
+		});
+	}
 
 	return nodes;
 };
+
+/**
+ * Calculates the intersecting distances of the mouse event coordinates with the given element's boundaries,
+ * adjusted by the specified offset.
+ *
+ * @param {Element} element - The DOM element to check against.
+ * @param {MouseEvent | TouchEvent} mouseEvent - The mouse or touch event with the coordinates.
+ * @param {number} offset - Offset to adjust the element's boundaries.
+ * @returns { {x: number | null, y: number | null} | null } Object containing intersecting distances along x and y axes or null if no intersection.
+ */
+export function calculateElementIntersection(
+	element: Element,
+	mouseEvent: MouseEvent | TouchEvent,
+	offset: number,
+): { x: number | null; y: number | null } | null {
+	const { top, left, right, bottom } = element.getBoundingClientRect();
+	const [x, y] = getMousePosition(mouseEvent);
+
+	let intersectX: number | null = null;
+	let intersectY: number | null = null;
+
+	if (x >= left - offset && x <= right + offset) {
+		intersectX = Math.min(x - (left - offset), right + offset - x);
+	}
+	if (y >= top - offset && y <= bottom + offset) {
+		intersectY = Math.min(y - (top - offset), bottom + offset - y);
+	}
+
+	if (intersectX === null && intersectY === null) return null;
+
+	return { x: intersectX, y: intersectY };
+}
+
+/**
+ * Checks if the mouse event coordinates intersect with the given element's boundaries,
+ * adjusted by the specified offset.
+ *
+ * @param {Element} element - The DOM element to check against.
+ * @param {MouseEvent | TouchEvent} mouseEvent - The mouse or touch event with the coordinates.
+ * @param {number} offset - Offset to adjust the element's boundaries.
+ * @returns {boolean} True if the mouse coordinates intersect with the element.
+ */
+export function isElementIntersection(
+	element: Element,
+	mouseEvent: MouseEvent | TouchEvent,
+	offset: number,
+): boolean {
+	const intersection = calculateElementIntersection(element, mouseEvent, offset);
+
+	if (intersection === null) {
+		return false;
+	}
+
+	const isWithinVerticalBounds = intersection.y !== null;
+	const isWithinHorizontalBounds = intersection.x !== null;
+
+	return isWithinVerticalBounds && isWithinHorizontalBounds;
+}
+
+export const getJSPlumbEndpoints = (
+	node: INodeUi | null,
+	instance: BrowserJsPlumbInstance,
+): Endpoint[] => {
+	if (!node) return [];
+
+	const nodeEl = instance.getManagedElement(node?.id);
+	return instance?.getEndpoints(nodeEl);
+};
+
+export const getPlusEndpoint = (
+	node: INodeUi | null,
+	outputIndex: number,
+	instance: BrowserJsPlumbInstance,
+): Endpoint | undefined => {
+	const endpoints = getJSPlumbEndpoints(node, instance);
+	return endpoints.find(
+		(endpoint: Endpoint) =>
+			endpoint.endpoint.type === 'N8nPlus' && endpoint?.__meta?.index === outputIndex,
+	);
+};
+
+export const getJSPlumbConnection = (
+	sourceNode: INodeUi | null,
+	sourceOutputIndex: number,
+	targetNode: INodeUi | null,
+	targetInputIndex: number,
+	connectionType: NodeConnectionType,
+	sourceNodeType: INodeTypeDescription | null,
+	instance: BrowserJsPlumbInstance,
+): Connection | undefined => {
+	if (!sourceNode || !targetNode) {
+		return;
+	}
+
+	const sourceId = sourceNode.id;
+	const targetId = targetNode.id;
+
+	const sourceEndpoint = getOutputEndpointUUID(sourceId, connectionType, sourceOutputIndex);
+	const targetEndpoint = getInputEndpointUUID(targetId, connectionType, targetInputIndex);
+
+	const sourceNodeOutput = sourceNodeType?.outputs?.[sourceOutputIndex] ?? NodeConnectionType.Main;
+	const sourceNodeOutputName =
+		typeof sourceNodeOutput === 'string'
+			? sourceNodeOutput
+			: 'name' in sourceNodeOutput
+				? `${sourceNodeOutput.name}`
+				: '';
+	const scope = getEndpointScope(sourceNodeOutputName);
+
+	const connections = instance?.getConnections({
+		scope,
+		source: sourceId,
+		target: targetId,
+	} as SelectOptions<Element>);
+
+	if (!Array.isArray(connections)) {
+		return;
+	}
+
+	return connections.find((connection: Connection) => {
+		const uuids = connection.getUuids();
+		return uuids[0] === sourceEndpoint && uuids[1] === targetEndpoint;
+	});
+};
+
+export function getGenericHints({
+	workflowNode,
+	node,
+	nodeType,
+	nodeOutputData,
+	hasMultipleInputItems,
+	workflow,
+	hasNodeRun,
+}: {
+	workflowNode: INode;
+	node: INodeUi;
+	nodeType: INodeTypeDescription;
+	nodeOutputData: INodeExecutionData[];
+	hasMultipleInputItems: boolean;
+	workflow: Workflow;
+	hasNodeRun: boolean;
+}) {
+	const nodeHints: NodeHint[] = [];
+
+	// add limit reached hint
+	if (hasNodeRun && workflowNode.parameters.limit) {
+		if (nodeOutputData.length === workflowNode.parameters.limit) {
+			nodeHints.push({
+				message: `Limit of ${workflowNode.parameters.limit as number} items reached. There may be more items that aren't being returned. Tweak the 'Return All' or 'Limit' parameters to access more items.`,
+				location: 'outputPane',
+				whenToDisplay: 'afterExecution',
+			});
+		}
+	}
+
+	// add Execute Once hint
+	if (
+		hasMultipleInputItems &&
+		LIST_LIKE_NODE_OPERATIONS.includes((workflowNode.parameters.operation as string) || '')
+	) {
+		const executeOnce = workflow.getNode(node.name)?.executeOnce;
+		if (!executeOnce) {
+			nodeHints.push({
+				message:
+					'This node runs multiple times, once for each input item. Use ‘Execute Once’ in the node settings if you want to run it only once.',
+				location: 'outputPane',
+			});
+		}
+	}
+
+	// add expression in field name hint for Set node
+	if (node.type === SET_NODE_TYPE && node.parameters.mode === 'manual') {
+		const rawParameters = NodeHelpers.getNodeParameters(
+			nodeType.properties,
+			node.parameters,
+			true,
+			false,
+			node,
+			undefined,
+			false,
+		);
+
+		const assignments =
+			((rawParameters?.assignments as AssignmentCollectionValue) || {})?.assignments || [];
+		const expressionInFieldName: number[] = [];
+
+		for (const [index, assignment] of assignments.entries()) {
+			if (assignment.name.startsWith('=')) {
+				expressionInFieldName.push(index + 1);
+			}
+		}
+
+		if (expressionInFieldName.length > 0) {
+			nodeHints.push({
+				message: `An expression is used in 'Fields to Set' in ${expressionInFieldName.length === 1 ? 'field' : 'fields'} ${expressionInFieldName.join(', ')}, did you mean to use it in the value instead?`,
+				whenToDisplay: 'beforeExecution',
+				location: 'outputPane',
+			});
+		}
+	}
+
+	// Split In Batches setup hints
+	if (node.type === SPLIT_IN_BATCHES_NODE_TYPE) {
+		const { connectionsBySourceNode } = workflow;
+
+		const firstNodesInLoop = connectionsBySourceNode[node.name]?.main[1] || [];
+
+		if (!firstNodesInLoop.length) {
+			nodeHints.push({
+				message: "No nodes connected to the 'loop' output of this node",
+				whenToDisplay: 'beforeExecution',
+				location: 'outputPane',
+			});
+		} else {
+			for (const nodeInConnection of firstNodesInLoop || []) {
+				const nodeChilds = workflow.getChildNodes(nodeInConnection.node) || [];
+				if (!nodeChilds.includes(node.name)) {
+					nodeHints.push({
+						message:
+							"The last node in the branch of the 'loop' output must be connected back to the input of this node to loop correctly",
+						whenToDisplay: 'beforeExecution',
+						location: 'outputPane',
+					});
+				}
+			}
+		}
+	}
+
+	return nodeHints;
+}
+
+/**
+ * Generate vertical insertion offsets for the given node count
+ *
+ * 2 nodes -> [-nodeSize, nodeSize],
+ * 3 nodes -> [-nodeSize - 2 * gridSize, 0, nodeSize + 2 * gridSize],
+ * 4 nodes ->	[-2 * nodeSize - 2 * gridSize, -nodeSize, nodeSize, 2 * nodeSize + 2 * gridSize]
+ * 5 nodes ->	[-2 * nodeSize - 2 * gridSize, -nodeSize, 0, nodeSize, 2 * nodeSize + 2 * gridSize]
+ */
+export function generateOffsets(nodeCount: number, nodeSize: number, gridSize: number) {
+	const offsets = [];
+	const half = Math.floor(nodeCount / 2);
+	const isOdd = nodeCount % 2 === 1;
+
+	if (nodeCount === 0) {
+		return [];
+	}
+
+	for (let i = -half; i <= half; i++) {
+		if (i === 0) {
+			if (isOdd) {
+				offsets.push(0);
+			}
+		} else {
+			const offset = i * nodeSize + Math.sign(i) * (Math.abs(i) - (isOdd ? 0 : 1)) * gridSize;
+			offsets.push(offset);
+		}
+	}
+
+	return offsets;
+}

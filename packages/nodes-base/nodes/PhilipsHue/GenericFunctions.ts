@@ -1,12 +1,16 @@
-import { OptionsWithUri } from 'request';
-
-import { IExecuteFunctions, ILoadOptionsFunctions } from 'n8n-core';
-
-import { IDataObject, NodeApiError } from 'n8n-workflow';
+import type {
+	JsonObject,
+	IDataObject,
+	IExecuteFunctions,
+	ILoadOptionsFunctions,
+	IHttpRequestMethods,
+	IRequestOptions,
+} from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
 
 export async function philipsHueApiRequest(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	resource: string,
 
 	body: any = {},
@@ -14,14 +18,14 @@ export async function philipsHueApiRequest(
 	uri?: string,
 	headers: IDataObject = {},
 ): Promise<any> {
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		headers: {
 			'Content-Type': 'application/json',
 		},
 		method,
 		body,
 		qs,
-		uri: uri ?? `https://api.meethue.com/route${resource}`,
+		uri: uri || `https://api.meethue.com/route${resource}`,
 		json: true,
 	};
 	try {
@@ -29,7 +33,7 @@ export async function philipsHueApiRequest(
 			options.headers = Object.assign({}, options.headers, headers);
 		}
 
-		if (Object.keys(body).length === 0) {
+		if (Object.keys(body as IDataObject).length === 0) {
 			delete options.body;
 		}
 
@@ -37,20 +41,19 @@ export async function philipsHueApiRequest(
 			delete options.qs;
 		}
 
-		//@ts-ignore
 		const response = await this.helpers.requestOAuth2.call(this, 'philipsHueOAuth2Api', options, {
 			tokenType: 'Bearer',
 		});
 		return response;
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
 export async function getUser(this: IExecuteFunctions | ILoadOptionsFunctions): Promise<any> {
 	const { whitelist } = await philipsHueApiRequest.call(this, 'GET', '/api/0/config', {}, {});
 	//check if there is a n8n user
-	for (const user of Object.keys(whitelist)) {
+	for (const user of Object.keys(whitelist as IDataObject)) {
 		if (whitelist[user].name === 'n8n') {
 			return user;
 		}

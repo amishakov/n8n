@@ -1,12 +1,12 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import type {
 	IDataObject,
+	IExecuteFunctions,
+	IHttpRequestMethods,
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
-	NodeOperationError,
 } from 'n8n-workflow';
+import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
 import {
 	dropboxApiRequest,
@@ -28,8 +28,8 @@ export class Dropbox implements INodeType {
 		defaults: {
 			name: 'Dropbox',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'dropboxApi',
@@ -313,7 +313,7 @@ export class Dropbox implements INodeType {
 				description: 'The file path of the file to download. Has to contain the full path.',
 			},
 			{
-				displayName: 'Binary Property',
+				displayName: 'Put Output File in Field',
 				name: 'binaryPropertyName',
 				type: 'string',
 				required: true,
@@ -324,7 +324,7 @@ export class Dropbox implements INodeType {
 						resource: ['file'],
 					},
 				},
-				description: 'Name of the binary property to which to write the data of the read file',
+				hint: 'The name of the output binary field to put the file in',
 			},
 
 			// ----------------------------------
@@ -347,7 +347,7 @@ export class Dropbox implements INodeType {
 					'The file path of the file to upload. Has to contain the full path. The parent folder has to exist. Existing files get overwritten.',
 			},
 			{
-				displayName: 'Binary Data',
+				displayName: 'Binary File',
 				name: 'binaryData',
 				type: 'boolean',
 				default: false,
@@ -375,7 +375,7 @@ export class Dropbox implements INodeType {
 				description: 'The text content of the file to upload',
 			},
 			{
-				displayName: 'Binary Property',
+				displayName: 'Input Binary Field',
 				name: 'binaryPropertyName',
 				type: 'string',
 				default: 'data',
@@ -388,8 +388,7 @@ export class Dropbox implements INodeType {
 					},
 				},
 				placeholder: '',
-				description:
-					'Name of the binary property which contains the data for the file to be uploaded',
+				hint: 'The name of the input binary field containing the file to be uploaded',
 			},
 
 			// ----------------------------------
@@ -699,7 +698,7 @@ export class Dropbox implements INodeType {
 		const operation = this.getNodeParameter('operation', 0);
 
 		let endpoint = '';
-		let requestMethod = '';
+		let requestMethod: IHttpRequestMethods = 'GET';
 		let returnAll = false;
 		let property = '';
 		let body: IDataObject | Buffer;
@@ -760,26 +759,9 @@ export class Dropbox implements INodeType {
 						options = { json: false };
 
 						if (this.getNodeParameter('binaryData', i)) {
-							// Is binary file to upload
-							const item = items[i];
-
-							if (item.binary === undefined) {
-								throw new NodeOperationError(this.getNode(), 'No binary data exists on item!', {
-									itemIndex: i,
-								});
-							}
-
-							const propertyNameUpload = this.getNodeParameter('binaryPropertyName', i);
-
-							if (item.binary[propertyNameUpload] === undefined) {
-								throw new NodeOperationError(
-									this.getNode(),
-									`No binary data property "${propertyNameUpload}" does not exists on item!`,
-									{ itemIndex: i },
-								);
-							}
-
-							body = await this.helpers.getBinaryDataBuffer(i, propertyNameUpload);
+							const binaryPropertyName = this.getNodeParameter('binaryPropertyName', i);
+							this.helpers.assertBinaryData(i, binaryPropertyName);
+							body = await this.helpers.getBinaryDataBuffer(i, binaryPropertyName);
 						} else {
 							// Is text file
 							body = Buffer.from(this.getNodeParameter('fileContent', i) as string, 'utf8');
@@ -932,9 +914,9 @@ export class Dropbox implements INodeType {
 				}
 
 				if (resource === 'file' && operation === 'upload') {
-					const data = JSON.parse(responseData);
+					const data = JSON.parse(responseData as string);
 					const executionData = this.helpers.constructExecutionMetaData(
-						this.helpers.returnJsonArray(data),
+						this.helpers.returnJsonArray(data as IDataObject[]),
 						{ itemData: { item: i } },
 					);
 					returnData.push(...executionData);
@@ -958,7 +940,7 @@ export class Dropbox implements INodeType {
 
 					const filePathDownload = this.getNodeParameter('path', i) as string;
 					items[i].binary![dataPropertyNameDownload] = await this.helpers.prepareBinaryData(
-						Buffer.from(responseData),
+						Buffer.from(responseData as string),
 						filePathDownload,
 					);
 				} else if (resource === 'folder' && operation === 'list') {
@@ -1000,20 +982,22 @@ export class Dropbox implements INodeType {
 				} else if (resource === 'search' && operation === 'query') {
 					let data = responseData;
 					if (returnAll) {
-						data = simple ? simplify(responseData) : responseData;
+						data = simple ? simplify(responseData as IDataObject[]) : responseData;
 					} else {
-						data = simple ? simplify(responseData[property]) : responseData[property];
+						data = simple
+							? simplify(responseData[property] as IDataObject[])
+							: responseData[property];
 					}
 
 					const executionData = this.helpers.constructExecutionMetaData(
-						this.helpers.returnJsonArray(data),
+						this.helpers.returnJsonArray(data as IDataObject[]),
 						{ itemData: { item: i } },
 					);
 
 					returnData.push(...executionData);
 				} else {
 					const executionData = this.helpers.constructExecutionMetaData(
-						this.helpers.returnJsonArray(responseData),
+						this.helpers.returnJsonArray(responseData as IDataObject[]),
 						{ itemData: { item: i } },
 					);
 					returnData.push(...executionData);
@@ -1033,10 +1017,10 @@ export class Dropbox implements INodeType {
 
 		if (resource === 'file' && operation === 'download') {
 			// For file downloads the files get attached to the existing items
-			return this.prepareOutputData(items);
+			return [items];
 		} else {
 			// For all other ones does the output items get replaced
-			return this.prepareOutputData(returnData);
+			return [returnData];
 		}
 	}
 }

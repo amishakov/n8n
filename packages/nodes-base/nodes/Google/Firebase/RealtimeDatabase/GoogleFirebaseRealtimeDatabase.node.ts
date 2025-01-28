@@ -1,15 +1,15 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
-	NodeApiError,
-	NodeOperationError,
+	JsonObject,
+	IHttpRequestMethods,
 } from 'n8n-workflow';
+import { NodeApiError, NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
 import { googleApiRequest, googleApiRequestAllItems } from './GenericFunctions';
 
@@ -25,8 +25,8 @@ export class GoogleFirebaseRealtimeDatabase implements INodeType {
 		defaults: {
 			name: 'Google Cloud Realtime Database',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'googleFirebaseRealtimeDatabaseOAuth2Api',
@@ -42,7 +42,7 @@ export class GoogleFirebaseRealtimeDatabase implements INodeType {
 					loadOptionsMethod: 'getProjects',
 				},
 				description:
-					'As displayed in firebase console URL. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+					'As displayed in firebase console URL. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 				required: true,
 			},
 			{
@@ -181,7 +181,7 @@ export class GoogleFirebaseRealtimeDatabase implements INodeType {
 			try {
 				const projectId = this.getNodeParameter('projectId', i) as string;
 
-				let method = 'GET',
+				let method: IHttpRequestMethods = 'GET',
 					attributes = '';
 				const document: IDataObject = {};
 				if (operation === 'create') {
@@ -218,7 +218,7 @@ export class GoogleFirebaseRealtimeDatabase implements INodeType {
 
 				if (responseData === null) {
 					if (operation === 'get') {
-						throw new NodeApiError(this.getNode(), responseData, {
+						throw new NodeApiError(this.getNode(), responseData as JsonObject, {
 							message: 'Requested entity was not found.',
 						});
 					} else if (method === 'DELETE') {
@@ -244,12 +244,12 @@ export class GoogleFirebaseRealtimeDatabase implements INodeType {
 			}
 
 			const executionData = this.helpers.constructExecutionMetaData(
-				this.helpers.returnJsonArray(responseData),
+				this.helpers.returnJsonArray(responseData as IDataObject[]),
 				{ itemData: { item: i } },
 			);
 			returnData.push(...executionData);
 		}
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

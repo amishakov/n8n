@@ -1,4 +1,4 @@
-import { ICredentialType, INodeProperties } from 'n8n-workflow';
+import type { ICredentialType, INodeProperties } from 'n8n-workflow';
 
 export class WebflowOAuth2Api implements ICredentialType {
 	name = 'webflowOAuth2Api';
@@ -15,6 +15,13 @@ export class WebflowOAuth2Api implements ICredentialType {
 			name: 'grantType',
 			type: 'hidden',
 			default: 'authorizationCode',
+		},
+		{
+			displayName: 'Legacy',
+			name: 'legacy',
+			type: 'boolean',
+			default: true,
+			description: 'If the legacy API should be used',
 		},
 		{
 			displayName: 'Authorization URL',
@@ -34,7 +41,7 @@ export class WebflowOAuth2Api implements ICredentialType {
 			displayName: 'Scope',
 			name: 'scope',
 			type: 'hidden',
-			default: '',
+			default: '={{$self["legacy"] ? "" : "cms:read cms:write sites:read forms:read"}}',
 		},
 		{
 			displayName: 'Auth URI Query Parameters',

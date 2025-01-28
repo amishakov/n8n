@@ -1,11 +1,14 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import { IDataObject, INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
-
-import { clearbitApiRequest } from './GenericFunctions';
+import type {
+	IExecuteFunctions,
+	IDataObject,
+	INodeExecutionData,
+	INodeType,
+	INodeTypeDescription,
+} from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
 
 import { companyFields, companyOperations } from './CompanyDescription';
-
+import { clearbitApiRequest } from './GenericFunctions';
 import { personFields, personOperations } from './PersonDescription';
 
 export class Clearbit implements INodeType {
@@ -20,8 +23,8 @@ export class Clearbit implements INodeType {
 		defaults: {
 			name: 'Clearbit',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'clearbitApi',
@@ -148,7 +151,7 @@ export class Clearbit implements INodeType {
 					}
 				}
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as IDataObject),
 					{ itemData: { item: i } },
 				);
 				returnData.push(...executionData);
@@ -160,6 +163,6 @@ export class Clearbit implements INodeType {
 				throw error;
 			}
 		}
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

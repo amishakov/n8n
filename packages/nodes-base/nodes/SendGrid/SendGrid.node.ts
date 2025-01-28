@@ -1,24 +1,21 @@
-import { IExecuteFunctions } from 'n8n-core';
-
+import moment from 'moment-timezone';
 import {
-	IDataObject,
-	ILoadOptionsFunctions,
-	INodeExecutionData,
-	INodePropertyOptions,
-	INodeType,
-	INodeTypeDescription,
-	NodeOperationError,
+	NodeConnectionType,
+	type IDataObject,
+	type IExecuteFunctions,
+	type IHttpRequestMethods,
+	type ILoadOptionsFunctions,
+	type INodeExecutionData,
+	type INodePropertyOptions,
+	type INodeType,
+	type INodeTypeDescription,
 } from 'n8n-workflow';
 
-import { listFields, listOperations } from './ListDescription';
-
 import { contactFields, contactOperations } from './ContactDescription';
-
-import { mailFields, mailOperations, SendMailBody } from './MailDescription';
-
 import { sendGridApiRequest, sendGridApiRequestAllItems } from './GenericFunctions';
-
-import moment from 'moment-timezone';
+import { listFields, listOperations } from './ListDescription';
+import type { SendMailBody } from './MailDescription';
+import { mailFields, mailOperations } from './MailDescription';
 
 export class SendGrid implements INodeType {
 	description: INodeTypeDescription = {
@@ -32,8 +29,8 @@ export class SendGrid implements INodeType {
 		defaults: {
 			name: 'SendGrid',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'sendGridApi',
@@ -148,7 +145,7 @@ export class SendGrid implements INodeType {
 						const returnAll = this.getNodeParameter('returnAll', i);
 						const filters = this.getNodeParameter('filters', i);
 						let endpoint = '/marketing/contacts';
-						let method = 'GET';
+						let method: IHttpRequestMethods = 'GET';
 						const body: IDataObject = {};
 						if (filters.query && filters.query !== '') {
 							endpoint = '/marketing/contacts/search';
@@ -168,7 +165,7 @@ export class SendGrid implements INodeType {
 							responseData = responseData.splice(0, limit);
 						}
 						const executionData = this.helpers.constructExecutionMetaData(
-							this.helpers.returnJsonArray(responseData),
+							this.helpers.returnJsonArray(responseData as IDataObject[]),
 							{ itemData: { item: i } },
 						);
 						returnData.push(...executionData);
@@ -188,7 +185,7 @@ export class SendGrid implements INodeType {
 			if (operation === 'get') {
 				const by = this.getNodeParameter('by', 0) as string;
 				let endpoint;
-				let method;
+				let method: IHttpRequestMethods;
 				const body: IDataObject = {};
 				for (let i = 0; i < length; i++) {
 					try {
@@ -209,7 +206,7 @@ export class SendGrid implements INodeType {
 						}
 
 						const executionData = this.helpers.constructExecutionMetaData(
-							this.helpers.returnJsonArray(responseData),
+							this.helpers.returnJsonArray(responseData as IDataObject[]),
 							{ itemData: { item: i } },
 						);
 						returnData.push(...executionData);
@@ -304,7 +301,7 @@ export class SendGrid implements INodeType {
 						{ list_ids: lists, contacts },
 						qs,
 					);
-					returnData.push(responseData);
+					returnData.push(responseData as INodeExecutionData);
 				} catch (error) {
 					if (this.continueOnFail()) {
 						returnData.push({ json: { error: error.message } });
@@ -330,7 +327,7 @@ export class SendGrid implements INodeType {
 						);
 
 						const executionData = this.helpers.constructExecutionMetaData(
-							this.helpers.returnJsonArray(responseData),
+							this.helpers.returnJsonArray(responseData as IDataObject[]),
 							{ itemData: { item: i } },
 						);
 						returnData.push(...executionData);
@@ -367,7 +364,7 @@ export class SendGrid implements INodeType {
 						}
 
 						const executionData = this.helpers.constructExecutionMetaData(
-							this.helpers.returnJsonArray(responseData),
+							this.helpers.returnJsonArray(responseData as IDataObject[]),
 							{ itemData: { item: i } },
 						);
 						returnData.push(...executionData);
@@ -398,7 +395,7 @@ export class SendGrid implements INodeType {
 						);
 
 						const executionData = this.helpers.constructExecutionMetaData(
-							this.helpers.returnJsonArray(responseData),
+							this.helpers.returnJsonArray(responseData as IDataObject[]),
 							{ itemData: { item: i } },
 						);
 						returnData.push(...executionData);
@@ -428,7 +425,7 @@ export class SendGrid implements INodeType {
 						);
 
 						const executionData = this.helpers.constructExecutionMetaData(
-							this.helpers.returnJsonArray(responseData),
+							this.helpers.returnJsonArray(responseData as IDataObject[]),
 							{ itemData: { item: i } },
 						);
 						returnData.push(...executionData);
@@ -489,7 +486,7 @@ export class SendGrid implements INodeType {
 							qs,
 						);
 						const executionData = this.helpers.constructExecutionMetaData(
-							this.helpers.returnJsonArray(responseData),
+							this.helpers.returnJsonArray(responseData as IDataObject[]),
 							{ itemData: { item: i } },
 						);
 						returnData.push(...executionData);
@@ -587,22 +584,13 @@ export class SendGrid implements INodeType {
 							const binaryProperties = attachments.split(',').map((p) => p.trim());
 
 							for (const property of binaryProperties) {
-								if (!items[i].binary?.hasOwnProperty(property)) {
-									throw new NodeOperationError(
-										this.getNode(),
-										`The binary property ${property} does not exist`,
-										{ itemIndex: i },
-									);
-								}
-
-								const binaryProperty = items[i].binary![property];
-
+								const binaryData = this.helpers.assertBinaryData(i, property);
 								const dataBuffer = await this.helpers.getBinaryDataBuffer(i, property);
 
 								attachmentsToSend.push({
 									content: dataBuffer.toString('base64'),
-									filename: binaryProperty.fileName ?? 'unknown',
-									type: binaryProperty.mimeType,
+									filename: binaryData.fileName || 'unknown',
+									type: binaryData.mimeType,
 								});
 							}
 
@@ -664,6 +652,6 @@ export class SendGrid implements INodeType {
 				}
 			}
 		}
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

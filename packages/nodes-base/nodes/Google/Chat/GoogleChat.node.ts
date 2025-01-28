@@ -1,6 +1,7 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import jwt from 'jsonwebtoken';
+import moment from 'moment-timezone';
+import type {
+	IExecuteFunctions,
 	ICredentialsDecrypted,
 	ICredentialTestFunctions,
 	IDataObject,
@@ -10,12 +11,9 @@ import {
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
-	NodeOperationError,
+	IRequestOptions,
 } from 'n8n-workflow';
-
-import { IMessage, IMessageUi } from './MessageInterface';
-
-import { OptionsWithUri } from 'request';
+import { NodeConnectionType, NodeOperationError, SEND_AND_WAIT_OPERATION } from 'n8n-workflow';
 
 import {
 	// attachmentFields,
@@ -29,14 +27,23 @@ import {
 	messageFields,
 	messageOperations,
 	spaceFields,
+	spaceIdProperty,
 	spaceOperations,
 } from './descriptions';
+import {
+	createSendAndWaitMessageBody,
+	googleApiRequest,
+	googleApiRequestAllItems,
+	validateJSON,
+} from './GenericFunctions';
+import type { IMessage, IMessageUi } from './MessageInterface';
+import { sendAndWaitWebhooksDescription } from '../../../utils/sendAndWait/descriptions';
+import {
+	configureWaitTillDate,
+	getSendAndWaitProperties,
+	sendAndWaitWebhook,
+} from '../../../utils/sendAndWait/utils';
 
-import { googleApiRequest, googleApiRequestAllItems, validateJSON } from './GenericFunctions';
-
-import moment from 'moment-timezone';
-
-import jwt from 'jsonwebtoken';
 export class GoogleChat implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Google Chat',
@@ -49,16 +56,48 @@ export class GoogleChat implements INodeType {
 		defaults: {
 			name: 'Google Chat',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
+		webhooks: sendAndWaitWebhooksDescription,
 		credentials: [
 			{
 				name: 'googleApi',
 				required: true,
 				testedBy: 'testGoogleTokenAuth',
+				displayOptions: {
+					show: {
+						authentication: ['serviceAccount'],
+					},
+				},
+			},
+			{
+				name: 'googleChatOAuth2Api',
+				required: true,
+				displayOptions: {
+					show: {
+						authentication: ['oAuth2'],
+					},
+				},
 			},
 		],
 		properties: [
+			{
+				displayName: 'Authentication',
+				name: 'authentication',
+				type: 'options',
+				options: [
+					{
+						// eslint-disable-next-line n8n-nodes-base/node-param-display-name-miscased
+						name: 'OAuth2 (recommended)',
+						value: 'oAuth2',
+					},
+					{
+						name: 'Service Account',
+						value: 'serviceAccount',
+					},
+				],
+				default: 'serviceAccount',
+			},
 			{
 				displayName: 'Resource',
 				name: 'resource',
@@ -105,12 +144,19 @@ export class GoogleChat implements INodeType {
 			...messageFields,
 			...spaceOperations,
 			...spaceFields,
+			...getSendAndWaitProperties([spaceIdProperty], 'message', undefined, {
+				noButtonStyle: true,
+				defaultApproveLabel: '✅ Approve',
+				defaultDisapproveLabel: '❌ Decline',
+			}).filter((p) => p.name !== 'subject'),
 		],
 	};
 
+	webhook = sendAndWaitWebhook;
+
 	methods = {
 		loadOptions: {
-			// Get all the spaces to display them to user so that he can
+			// Get all the spaces to display them to user so that they can
 			// select them easily
 			async getSpaces(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -157,7 +203,7 @@ export class GoogleChat implements INodeType {
 						},
 					);
 
-					const options: OptionsWithUri = {
+					const options: IRequestOptions = {
 						headers: {
 							'Content-Type': 'application/x-www-form-urlencoded',
 						},
@@ -201,6 +247,19 @@ export class GoogleChat implements INodeType {
 		let responseData;
 		const resource = this.getNodeParameter('resource', 0);
 		const operation = this.getNodeParameter('operation', 0);
+
+		if (resource === 'message' && operation === SEND_AND_WAIT_OPERATION) {
+			const spaceId = this.getNodeParameter('spaceId', 0) as string;
+			const body = createSendAndWaitMessageBody(this);
+
+			await googleApiRequest.call(this, 'POST', `/v1/${spaceId}/messages`, body);
+
+			const waitTill = configureWaitTillDate(this);
+
+			await this.putExecutionToWait(waitTill);
+			return [this.getInputData()];
+		}
+
 		for (let i = 0; i < length; i++) {
 			try {
 				if (resource === 'media') {
@@ -246,7 +305,7 @@ export class GoogleChat implements INodeType {
 						const binaryPropertyName = this.getNodeParameter('binaryPropertyName', i);
 
 						items[i].binary![binaryPropertyName] = await this.helpers.prepareBinaryData(
-							responseData,
+							responseData as Buffer,
 							endpoint,
 						);
 					}
@@ -536,7 +595,7 @@ export class GoogleChat implements INodeType {
 				}
 
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as IDataObject),
 					{ itemData: { item: i } },
 				);
 				returnData.push(...executionData);
@@ -560,10 +619,10 @@ export class GoogleChat implements INodeType {
 
 		if (operation === 'download') {
 			// For file downloads the files get attached to the existing items
-			return this.prepareOutputData(items);
+			return [items];
 		} else {
 			// For all other ones does the output get replaced
-			return this.prepareOutputData(returnData);
+			return [returnData];
 		}
 	}
 }

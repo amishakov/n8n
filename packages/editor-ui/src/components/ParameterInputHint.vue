@@ -1,53 +1,68 @@
+<script setup lang="ts">
+import { sanitizeHtml } from '@/utils/htmlUtils';
+import { computed, onMounted, ref } from 'vue';
+
+type Props = {
+	hint: string;
+	highlight?: boolean;
+	singleLine?: boolean;
+	renderHTML?: boolean;
+};
+
+const hintTextRef = ref<HTMLDivElement>();
+
+const props = withDefaults(defineProps<Props>(), {
+	highlight: false,
+	singleLine: false,
+	renderHTML: false,
+});
+
+onMounted(() => {
+	if (hintTextRef.value) {
+		hintTextRef.value.querySelectorAll('a').forEach((a) => (a.target = '_blank'));
+	}
+});
+
+const simplyText = computed(() => {
+	if (props.hint) {
+		return String(props.hint)
+			.replace(/&/g, '&amp;') // allows us to keep spaces at the beginning of an expression
+			.replace(/</g, '&lt;') // prevent XSS exploits since we are rendering HTML
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/ /g, '&nbsp;');
+	}
+
+	return '';
+});
+</script>
+
 <template>
-	<n8n-text size="small" color="text-base" tag="div" v-if="hint">
-		<div v-if="!renderHTML" :class="{ [$style.hint]: true, [$style.highlight]: highlight }">
-			{{ hint }}
+	<n8n-text v-if="hint" size="small" color="text-base" tag="div">
+		<div
+			v-if="!renderHTML"
+			:class="{
+				[$style.singleline]: singleLine,
+				[$style.highlight]: highlight,
+			}"
+		>
+			<span data-test-id="parameter-input-hint" v-n8n-html="simplyText"></span>
 		</div>
 		<div
 			v-else
-			ref="hint"
-			:class="{ [$style.hint]: true, [$style.highlight]: highlight }"
-			v-html="sanitizeHtml(hint)"
+			ref="hintTextRef"
+			:class="{ [$style.singleline]: singleLine, [$style.highlight]: highlight }"
+			v-n8n-html="sanitizeHtml(hint)"
 		></div>
 	</n8n-text>
 </template>
 
-<script lang="ts">
-import { sanitizeHtml } from '@/utils';
-import Vue from 'vue';
-
-export default Vue.extend({
-	name: 'InputHint',
-	props: {
-		hint: {
-			type: String,
-		},
-		highlight: {
-			type: Boolean,
-		},
-		renderHTML: {
-			type: Boolean,
-			default: false,
-		},
-	},
-	methods: {
-		sanitizeHtml,
-	},
-	mounted() {
-		if (this.$refs.hint) {
-			(this.$refs.hint as Element).querySelectorAll('a').forEach((a) => (a.target = '_blank'));
-		}
-	},
-});
-</script>
-
 <style lang="scss" module>
-.hint {
+.singleline {
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
 }
-
 .highlight {
 	color: var(--color-secondary);
 }

@@ -1,9 +1,13 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import { IDataObject, INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
+import type {
+	IExecuteFunctions,
+	IDataObject,
+	INodeExecutionData,
+	INodeType,
+	INodeTypeDescription,
+} from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
 
 import { certificateFields, certificateOperations } from './CertificateDescription';
-
 import { awsApiRequestAllItems, awsApiRequestREST } from './GenericFunctions';
 
 export class AwsCertificateManager implements INodeType {
@@ -18,8 +22,8 @@ export class AwsCertificateManager implements INodeType {
 		defaults: {
 			name: 'AWS Certificate Manager',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'aws',
@@ -211,7 +215,7 @@ export class AwsCertificateManager implements INodeType {
 					}
 
 					const executionData = this.helpers.constructExecutionMetaData(
-						this.helpers.returnJsonArray(responseData),
+						this.helpers.returnJsonArray(responseData as IDataObject),
 						{ itemData: { item: i } },
 					);
 

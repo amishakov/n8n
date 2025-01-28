@@ -1,23 +1,18 @@
-import { OptionsWithUri } from 'request';
-
-import {
+import type {
+	IDataObject,
 	IExecuteFunctions,
-	IExecuteSingleFunctions,
 	IHookFunctions,
+	IHttpRequestMethods,
 	ILoadOptionsFunctions,
+	IRequestOptions,
 	IWebhookFunctions,
-} from 'n8n-core';
-
-import { IDataObject, NodeApiError } from 'n8n-workflow';
+	JsonObject,
+} from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
 
 export async function sentryIoApiRequest(
-	this:
-		| IHookFunctions
-		| IExecuteFunctions
-		| IExecuteSingleFunctions
-		| ILoadOptionsFunctions
-		| IWebhookFunctions,
-	method: string,
+	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions | IWebhookFunctions,
+	method: IHttpRequestMethods,
 	resource: string,
 
 	body: any = {},
@@ -29,15 +24,15 @@ export async function sentryIoApiRequest(
 
 	const version = this.getNodeParameter('sentryVersion', 0);
 
-	const options: OptionsWithUri = {
+	const options = {
 		headers: {},
 		method,
 		qs,
 		body,
-		uri: uri ?? `https://sentry.io${resource}`,
+		uri: uri || `https://sentry.io${resource}`,
 		json: true,
-	};
-	if (!Object.keys(body).length) {
+	} satisfies IRequestOptions;
+	if (!Object.keys(body as IDataObject).length) {
 		delete options.body;
 	}
 
@@ -69,13 +64,12 @@ export async function sentryIoApiRequest(
 				Authorization: `Bearer ${credentials?.token}`,
 			};
 
-			//@ts-ignore
 			return await this.helpers.request(options);
 		} else {
 			return await this.helpers.requestOAuth2.call(this, 'sentryIoOAuth2Api', options);
 		}
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
@@ -101,7 +95,7 @@ function hasMore(link: string) {
 
 export async function sentryApiRequestAllItems(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	resource: string,
 
 	body: any = {},
@@ -120,12 +114,13 @@ export async function sentryApiRequestAllItems(
 			resolveWithFullResponse: true,
 		});
 		link = responseData.headers.link;
-		uri = getNext(link);
-		returnData.push.apply(returnData, responseData.body);
-		if (query.limit && query.limit >= returnData.length) {
+		uri = getNext(link as string);
+		returnData.push.apply(returnData, responseData.body as IDataObject[]);
+		const limit = query.limit as number | undefined;
+		if (limit && limit >= returnData.length) {
 			return;
 		}
-	} while (hasMore(link));
+	} while (hasMore(link as string));
 
 	return returnData;
 }

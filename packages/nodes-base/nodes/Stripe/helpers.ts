@@ -1,8 +1,15 @@
-import { IExecuteFunctions, IHookFunctions } from 'n8n-core';
-
-import { flow, isEmpty, omit } from 'lodash';
-
-import { IDataObject, ILoadOptionsFunctions, INodePropertyOptions } from 'n8n-workflow';
+import flow from 'lodash/flow';
+import isEmpty from 'lodash/isEmpty';
+import omit from 'lodash/omit';
+import type {
+	IExecuteFunctions,
+	IHookFunctions,
+	IDataObject,
+	ILoadOptionsFunctions,
+	INodePropertyOptions,
+	IHttpRequestMethods,
+	IRequestOptions,
+} from 'n8n-workflow';
 
 /**
  * Make an API request to Stripe
@@ -10,10 +17,10 @@ import { IDataObject, ILoadOptionsFunctions, INodePropertyOptions } from 'n8n-wo
  */
 export async function stripeApiRequest(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
-	body: object,
-	query?: object,
+	body: IDataObject,
+	query?: IDataObject,
 ) {
 	const options = {
 		method,
@@ -21,13 +28,13 @@ export async function stripeApiRequest(
 		qs: query,
 		uri: `https://api.stripe.com/v1${endpoint}`,
 		json: true,
-	};
+	} satisfies IRequestOptions;
 
 	if (options.qs && Object.keys(options.qs).length === 0) {
 		delete options.qs;
 	}
 
-	return this.helpers.requestWithAuthentication.call(this, 'stripeApi', options);
+	return await this.helpers.requestWithAuthentication.call(this, 'stripeApi', options);
 }
 
 /**
@@ -123,7 +130,7 @@ export async function handleListing(
 
 	do {
 		responseData = await stripeApiRequest.call(this, 'GET', `/${resource}s`, {}, qs);
-		returnData.push(...responseData.data);
+		returnData.push(...(responseData.data as IDataObject[]));
 
 		if (!returnAll && returnData.length >= limit) {
 			return returnData.slice(0, limit);

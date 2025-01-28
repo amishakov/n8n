@@ -1,18 +1,23 @@
-import { OptionsWithUri } from 'request';
-
-import { IExecuteFunctions, IHookFunctions, ILoadOptionsFunctions } from 'n8n-core';
-
-import _ from 'lodash';
+import map from 'lodash/map';
+import type {
+	IDataObject,
+	IExecuteFunctions,
+	IHookFunctions,
+	IHttpRequestMethods,
+	ILoadOptionsFunctions,
+	IRequestOptions,
+	JsonObject,
+} from 'n8n-workflow';
 import { NodeApiError } from 'n8n-workflow';
 
 export async function mandrillApiRequest(
 	this: IExecuteFunctions | IHookFunctions | ILoadOptionsFunctions,
 	resource: string,
-	method: string,
+	method: IHttpRequestMethods,
 	action: string,
 
 	body: any = {},
-	headers?: object,
+	headers?: IDataObject,
 ): Promise<any> {
 	const credentials = await this.getCredentials('mandrillApi');
 
@@ -20,7 +25,7 @@ export async function mandrillApiRequest(
 
 	const endpoint = 'mandrillapp.com/api/1.0';
 
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		headers,
 		method,
 		uri: `https://${endpoint}${resource}${action}.json`,
@@ -31,7 +36,7 @@ export async function mandrillApiRequest(
 	try {
 		return await this.helpers.request(options);
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
@@ -39,7 +44,7 @@ export function getToEmailArray(toEmail: string): any {
 	let toEmailArray;
 	if (toEmail.split(',').length > 0) {
 		const array = toEmail.split(',');
-		toEmailArray = _.map(array, (email) => {
+		toEmailArray = map(array, (email) => {
 			return {
 				email,
 				type: 'to',

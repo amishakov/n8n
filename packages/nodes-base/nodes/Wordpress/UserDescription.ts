@@ -1,4 +1,4 @@
-import { INodeProperties } from 'n8n-workflow';
+import type { INodeProperties } from 'n8n-workflow';
 
 export const userOperations: INodeProperties[] = [
 	{
@@ -18,11 +18,6 @@ export const userOperations: INodeProperties[] = [
 				description: 'Create a user',
 				action: 'Create a user',
 			},
-			// {
-			// 	name: 'Delete',
-			// 	value: 'delete',
-			// 	description: 'Delete a user',
-			// },
 			{
 				name: 'Get',
 				value: 'get',
@@ -304,7 +299,7 @@ export const userFields: INodeProperties[] = [
 		displayName: 'Options',
 		name: 'options',
 		type: 'collection',
-		placeholder: 'Add Option',
+		placeholder: 'Add option',
 		default: {},
 		displayOptions: {
 			show: {
@@ -374,7 +369,7 @@ export const userFields: INodeProperties[] = [
 		displayName: 'Options',
 		name: 'options',
 		type: 'collection',
-		placeholder: 'Add Option',
+		placeholder: 'Add option',
 		default: {},
 		displayOptions: {
 			show: {

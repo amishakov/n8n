@@ -1,8 +1,14 @@
-import { IExecuteFunctions, IHookFunctions, ILoadOptionsFunctions } from 'n8n-core';
-
-import { IDataObject, INodePropertyOptions, NodeApiError, NodeOperationError } from 'n8n-workflow';
-
-import { OptionsWithUri } from 'request';
+import type {
+	IExecuteFunctions,
+	IHookFunctions,
+	ILoadOptionsFunctions,
+	IDataObject,
+	INodePropertyOptions,
+	JsonObject,
+	IRequestOptions,
+	IHttpRequestMethods,
+} from 'n8n-workflow';
+import { NodeApiError, NodeOperationError } from 'n8n-workflow';
 
 // Interface in Typeform
 export interface ITypeformDefinition {
@@ -33,14 +39,14 @@ export interface ITypeformAnswerField {
  */
 export async function apiRequest(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	body: object,
 	query?: IDataObject,
 ): Promise<any> {
 	const authenticationMethod = this.getNodeParameter('authentication', 0);
 
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		headers: {},
 		method,
 		body,
@@ -49,7 +55,7 @@ export async function apiRequest(
 		json: true,
 	};
 
-	query = query ?? {};
+	query = query || {};
 
 	try {
 		if (authenticationMethod === 'accessToken') {
@@ -58,7 +64,7 @@ export async function apiRequest(
 			return await this.helpers.requestOAuth2.call(this, 'typeformOAuth2Api', options);
 		}
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
@@ -70,7 +76,7 @@ export async function apiRequest(
  */
 export async function apiRequestAllItems(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	body: IDataObject,
 	query?: IDataObject,
@@ -94,7 +100,7 @@ export async function apiRequestAllItems(
 
 		responseData = await apiRequest.call(this, method, endpoint, body, query);
 
-		returnData.items.push.apply(returnData.items, responseData.items);
+		returnData.items.push.apply(returnData.items, responseData.items as IDataObject[]);
 	} while (responseData.page_count !== undefined && responseData.page_count > query.page);
 
 	return returnData;

@@ -1,12 +1,15 @@
-import { OptionsWithUri } from 'request';
-
-import { IExecuteFunctions, IExecuteSingleFunctions, ILoadOptionsFunctions } from 'n8n-core';
-
-import { IDataObject, IHookFunctions } from 'n8n-workflow';
+import type {
+	IExecuteFunctions,
+	ILoadOptionsFunctions,
+	IDataObject,
+	IHookFunctions,
+	IHttpRequestMethods,
+	IRequestOptions,
+} from 'n8n-workflow';
 
 export async function mailjetApiRequest(
-	this: IExecuteFunctions | IExecuteSingleFunctions | IHookFunctions | ILoadOptionsFunctions,
-	method: string,
+	this: IExecuteFunctions | IHookFunctions | ILoadOptionsFunctions,
+	method: IHttpRequestMethods,
 	path: string,
 
 	body: any = {},
@@ -20,9 +23,9 @@ export async function mailjetApiRequest(
 
 	if (resource === 'email' || this.getNode().type.includes('Trigger')) {
 		credentialType = 'mailjetEmailApi';
-		const { sandboxMode } = (await this.getCredentials('mailjetEmailApi')) as {
+		const { sandboxMode } = await this.getCredentials<{
 			sandboxMode: boolean;
-		};
+		}>('mailjetEmailApi');
 
 		if (!this.getNode().type.includes('Trigger')) {
 			Object.assign(body, { SandboxMode: sandboxMode });
@@ -31,7 +34,7 @@ export async function mailjetApiRequest(
 		credentialType = 'mailjetSmsApi';
 	}
 
-	let options: OptionsWithUri = {
+	let options: IRequestOptions = {
 		headers: {
 			Accept: 'application/json',
 			'Content-Type': 'application/json',
@@ -39,20 +42,20 @@ export async function mailjetApiRequest(
 		method,
 		qs,
 		body,
-		uri: uri ?? `https://api.mailjet.com${path}`,
+		uri: uri || `https://api.mailjet.com${path}`,
 		json: true,
 	};
 	options = Object.assign({}, options, option);
-	if (Object.keys(options.body).length === 0) {
+	if (Object.keys(options.body as IDataObject).length === 0) {
 		delete options.body;
 	}
 
-	return this.helpers.requestWithAuthentication.call(this, credentialType, options);
+	return await this.helpers.requestWithAuthentication.call(this, credentialType, options);
 }
 
 export async function mailjetApiRequestAllItems(
 	this: IExecuteFunctions | IHookFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 
 	body: any = {},
@@ -69,7 +72,7 @@ export async function mailjetApiRequestAllItems(
 		responseData = await mailjetApiRequest.call(this, method, endpoint, body, query, undefined, {
 			resolveWithFullResponse: true,
 		});
-		returnData.push.apply(returnData, responseData.body);
+		returnData.push.apply(returnData, responseData.body as IDataObject[]);
 		query.Offset = query.Offset + query.Limit;
 	} while (responseData.length !== 0);
 	return returnData;

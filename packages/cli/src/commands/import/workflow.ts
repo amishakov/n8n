@@ -1,38 +1,24 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
-/* eslint-disable no-restricted-syntax */
-/* eslint-disable @typescript-eslint/restrict-template-expressions */
-/* eslint-disable @typescript-eslint/no-shadow */
-/* eslint-disable @typescript-eslint/no-loop-func */
-/* eslint-disable no-await-in-loop */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
-/* eslint-disable no-console */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-import { Command, flags } from '@oclif/command';
-
-import { INode, INodeCredentialsDetails, LoggerProxy } from 'n8n-workflow';
-
-import fs from 'fs';
+import { Container } from '@n8n/di';
+import { Flags } from '@oclif/core';
 import glob from 'fast-glob';
-import { UserSettings } from 'n8n-core';
-import type { EntityManager } from 'typeorm';
-import { v4 as uuid } from 'uuid';
-import { getLogger } from '@/Logger';
-import * as Db from '@/Db';
-import { SharedWorkflow } from '@db/entities/SharedWorkflow';
-import { WorkflowEntity } from '@db/entities/WorkflowEntity';
-import { Role } from '@db/entities/Role';
-import { User } from '@db/entities/User';
-import { setTagsForImport } from '@/TagHelpers';
-import type { ICredentialsDb, IWorkflowToImport } from '@/Interfaces';
+import fs from 'fs';
+import { ApplicationError, jsonParse } from 'n8n-workflow';
 
-const FIX_INSTRUCTION =
-	'Please fix the database by running ./packages/cli/bin/n8n user-management:reset';
+import { UM_FIX_INSTRUCTION } from '@/constants';
+import type { WorkflowEntity } from '@/databases/entities/workflow-entity';
+import { ProjectRepository } from '@/databases/repositories/project.repository';
+import { SharedWorkflowRepository } from '@/databases/repositories/shared-workflow.repository';
+import { UserRepository } from '@/databases/repositories/user.repository';
+import { WorkflowRepository } from '@/databases/repositories/workflow.repository';
+import { generateNanoId } from '@/databases/utils/generators';
+import type { IWorkflowToImport } from '@/interfaces';
+import { ImportService } from '@/services/import.service';
+
+import { BaseCommand } from '../base-command';
 
 function assertHasWorkflowsToImport(workflows: unknown): asserts workflows is IWorkflowToImport[] {
 	if (!Array.isArray(workflows)) {
-		throw new Error(
+		throw new ApplicationError(
 			'File does not seem to contain workflows. Make sure the workflows are contained in an array.',
 		);
 	}
@@ -43,235 +29,201 @@ function assertHasWorkflowsToImport(workflows: unknown): asserts workflows is IW
 			!Object.prototype.hasOwnProperty.call(workflow, 'nodes') ||
 			!Object.prototype.hasOwnProperty.call(workflow, 'connections')
 		) {
-			throw new Error('File does not seem to contain valid workflows.');
+			throw new ApplicationError('File does not seem to contain valid workflows.');
 		}
 	}
 }
 
-export class ImportWorkflowsCommand extends Command {
+export class ImportWorkflowsCommand extends BaseCommand {
 	static description = 'Import workflows';
 
 	static examples = [
 		'$ n8n import:workflow --input=file.json',
 		'$ n8n import:workflow --separate --input=backups/latest/',
 		'$ n8n import:workflow --input=file.json --userId=1d64c3d2-85fe-4a83-a649-e446b07b3aae',
+		'$ n8n import:workflow --input=file.json --projectId=Ox8O54VQrmBrb4qL',
 		'$ n8n import:workflow --separate --input=backups/latest/ --userId=1d64c3d2-85fe-4a83-a649-e446b07b3aae',
 	];
 
 	static flags = {
-		help: flags.help({ char: 'h' }),
-		input: flags.string({
+		help: Flags.help({ char: 'h' }),
+		input: Flags.string({
 			char: 'i',
 			description: 'Input file name or directory if --separate is used',
 		}),
-		separate: flags.boolean({
+		separate: Flags.boolean({
 			description: 'Imports *.json files from directory provided by --input',
 		}),
-		userId: flags.string({
+		userId: Flags.string({
 			description: 'The ID of the user to assign the imported workflows to',
+		}),
+		projectId: Flags.string({
+			description: 'The ID of the project to assign the imported workflows to',
 		}),
 	};
 
-	ownerWorkflowRole: Role;
-
-	transactionManager: EntityManager;
-
 	async run(): Promise<void> {
-		const logger = getLogger();
-		LoggerProxy.init(logger);
-
-		const { flags } = this.parse(ImportWorkflowsCommand);
+		const { flags } = await this.parse(ImportWorkflowsCommand);
 
 		if (!flags.input) {
-			console.info('An input file or directory with --input must be provided');
+			this.logger.info('An input file or directory with --input must be provided');
 			return;
 		}
 
 		if (flags.separate) {
 			if (fs.existsSync(flags.input)) {
 				if (!fs.lstatSync(flags.input).isDirectory()) {
-					console.info('The argument to --input must be a directory');
+					this.logger.info('The argument to --input must be a directory');
 					return;
 				}
 			}
 		}
 
-		try {
-			await Db.init();
+		if (flags.projectId && flags.userId) {
+			throw new ApplicationError(
+				'You cannot use `--userId` and `--projectId` together. Use one or the other.',
+			);
+		}
 
-			await this.initOwnerWorkflowRole();
-			const user = flags.userId ? await this.getAssignee(flags.userId) : await this.getOwner();
+		const project = await this.getProject(flags.userId, flags.projectId);
 
-			// Make sure the settings exist
-			await UserSettings.prepareUserSettings();
-			const credentials = await Db.collections.Credentials.find();
-			const tags = await Db.collections.Tag.find();
+		const workflows = await this.readWorkflows(flags.input, flags.separate);
 
-			let totalImported = 0;
+		const result = await this.checkRelations(workflows, flags.projectId, flags.userId);
 
-			if (flags.separate) {
-				let { input: inputPath } = flags;
+		if (!result.success) {
+			throw new ApplicationError(result.message);
+		}
 
-				if (process.platform === 'win32') {
-					inputPath = inputPath.replace(/\\/g, '/');
-				}
+		this.logger.info(`Importing ${workflows.length} workflows...`);
 
-				const files = await glob('*.json', {
-					cwd: inputPath,
-					absolute: true,
-				});
+		await Container.get(ImportService).importWorkflows(workflows, project.id);
 
-				totalImported = files.length;
+		this.reportSuccess(workflows.length);
+	}
 
-				await Db.getConnection().transaction(async (transactionManager) => {
-					this.transactionManager = transactionManager;
+	private async checkRelations(workflows: WorkflowEntity[], projectId?: string, userId?: string) {
+		// The credential is not supposed to be re-owned.
+		if (!userId && !projectId) {
+			return {
+				success: true as const,
+				message: undefined,
+			};
+		}
 
-					for (const file of files) {
-						const workflow = JSON.parse(fs.readFileSync(file, { encoding: 'utf8' }));
-
-						if (credentials.length > 0) {
-							workflow.nodes.forEach((node: INode) => {
-								this.transformCredentials(node, credentials);
-
-								if (!node.id) {
-									// eslint-disable-next-line no-param-reassign
-									node.id = uuid();
-								}
-							});
-						}
-
-						if (Object.prototype.hasOwnProperty.call(workflow, 'tags')) {
-							await setTagsForImport(transactionManager, workflow, tags);
-						}
-
-						await this.storeWorkflow(workflow, user);
-					}
-				});
-
-				this.reportSuccess(totalImported);
-				process.exit();
+		for (const workflow of workflows) {
+			if (!(await this.workflowExists(workflow))) {
+				continue;
 			}
 
-			const workflows = JSON.parse(fs.readFileSync(flags.input, { encoding: 'utf8' }));
+			const { user, project: ownerProject } = await this.getWorkflowOwner(workflow);
 
-			assertHasWorkflowsToImport(workflows);
+			if (!ownerProject) {
+				continue;
+			}
 
-			totalImported = workflows.length;
+			if (ownerProject.id !== projectId) {
+				const currentOwner =
+					ownerProject.type === 'personal'
+						? `the user with the ID "${user.id}"`
+						: `the project with the ID "${ownerProject.id}"`;
+				const newOwner = userId
+					? // The user passed in `--userId`, so let's use the user ID in the error
+						// message as opposed to the project ID.
+						`the user with the ID "${userId}"`
+					: `the project with the ID "${projectId}"`;
 
-			await Db.getConnection().transaction(async (transactionManager) => {
-				this.transactionManager = transactionManager;
-
-				for (const workflow of workflows) {
-					if (credentials.length > 0) {
-						workflow.nodes.forEach((node: INode) => {
-							this.transformCredentials(node, credentials);
-
-							if (!node.id) {
-								// eslint-disable-next-line no-param-reassign
-								node.id = uuid();
-							}
-						});
-					}
-
-					if (Object.prototype.hasOwnProperty.call(workflow, 'tags')) {
-						await setTagsForImport(transactionManager, workflow, tags);
-					}
-
-					await this.storeWorkflow(workflow, user);
-				}
-			});
-
-			this.reportSuccess(totalImported);
-			process.exit();
-		} catch (error) {
-			console.error('An error occurred while importing workflows. See log messages for details.');
-			if (error instanceof Error) logger.error(error.message);
-			this.exit(1);
+				return {
+					success: false as const,
+					message: `The credential with ID "${workflow.id}" is already owned by ${currentOwner}. It can't be re-owned by ${newOwner}.`,
+				};
+			}
 		}
+
+		return {
+			success: true as const,
+			message: undefined,
+		};
+	}
+
+	async catch(error: Error) {
+		this.logger.error('An error occurred while importing workflows. See log messages for details.');
+		this.logger.error(error.message);
 	}
 
 	private reportSuccess(total: number) {
-		console.info(`Successfully imported ${total} ${total === 1 ? 'workflow.' : 'workflows.'}`);
+		this.logger.info(`Successfully imported ${total} ${total === 1 ? 'workflow.' : 'workflows.'}`);
 	}
 
-	private async initOwnerWorkflowRole() {
-		const ownerWorkflowRole = await Db.collections.Role.findOne({
-			where: { name: 'owner', scope: 'workflow' },
+	private async getWorkflowOwner(workflow: WorkflowEntity) {
+		const sharing = await Container.get(SharedWorkflowRepository).findOne({
+			where: { workflowId: workflow.id, role: 'workflow:owner' },
+			relations: { project: true },
 		});
 
-		if (!ownerWorkflowRole) {
-			throw new Error(`Failed to find owner workflow role. ${FIX_INSTRUCTION}`);
+		if (sharing && sharing.project.type === 'personal') {
+			const user = await Container.get(UserRepository).findOneByOrFail({
+				projectRelations: {
+					role: 'project:personalOwner',
+					projectId: sharing.projectId,
+				},
+			});
+
+			return { user, project: sharing.project };
 		}
 
-		this.ownerWorkflowRole = ownerWorkflowRole;
+		return {};
 	}
 
-	private async storeWorkflow(workflow: object, user: User) {
-		const newWorkflow = new WorkflowEntity();
-
-		Object.assign(newWorkflow, workflow);
-
-		const savedWorkflow = await this.transactionManager.save<WorkflowEntity>(newWorkflow);
-
-		const newSharedWorkflow = new SharedWorkflow();
-
-		Object.assign(newSharedWorkflow, {
-			workflow: savedWorkflow,
-			user,
-			role: this.ownerWorkflowRole,
-		});
-
-		await this.transactionManager.save<SharedWorkflow>(newSharedWorkflow);
+	private async workflowExists(workflow: WorkflowEntity) {
+		return await Container.get(WorkflowRepository).existsBy({ id: workflow.id });
 	}
 
-	private async getOwner() {
-		const ownerGlobalRole = await Db.collections.Role.findOne({
-			where: { name: 'owner', scope: 'global' },
-		});
-
-		const owner =
-			ownerGlobalRole &&
-			(await Db.collections.User.findOneBy({ globalRoleId: ownerGlobalRole?.id }));
-
-		if (!owner) {
-			throw new Error(`Failed to find owner. ${FIX_INSTRUCTION}`);
+	private async readWorkflows(path: string, separate: boolean): Promise<WorkflowEntity[]> {
+		if (process.platform === 'win32') {
+			path = path.replace(/\\/g, '/');
 		}
 
-		return owner;
-	}
-
-	private async getAssignee(userId: string) {
-		const user = await Db.collections.User.findOneBy({ id: userId });
-
-		if (!user) {
-			throw new Error(`Failed to find user with ID ${userId}`);
-		}
-
-		return user;
-	}
-
-	private transformCredentials(node: INode, credentialsEntities: ICredentialsDb[]) {
-		if (node.credentials) {
-			const allNodeCredentials = Object.entries(node.credentials);
-			for (const [type, name] of allNodeCredentials) {
-				if (typeof name === 'string') {
-					const nodeCredentials: INodeCredentialsDetails = {
-						id: null,
-						name,
-					};
-
-					const matchingCredentials = credentialsEntities.filter(
-						(credentials) => credentials.name === name && credentials.type === type,
-					);
-
-					if (matchingCredentials.length === 1) {
-						nodeCredentials.id = matchingCredentials[0].id;
-					}
-
-					// eslint-disable-next-line no-param-reassign
-					node.credentials[type] = nodeCredentials;
+		if (separate) {
+			const files = await glob('*.json', {
+				cwd: path,
+				absolute: true,
+			});
+			const workflowInstances = files.map((file) => {
+				const workflow = jsonParse<IWorkflowToImport>(fs.readFileSync(file, { encoding: 'utf8' }));
+				if (!workflow.id) {
+					workflow.id = generateNanoId();
 				}
-			}
+
+				const workflowInstance = Container.get(WorkflowRepository).create(workflow);
+
+				return workflowInstance;
+			});
+
+			return workflowInstances;
+		} else {
+			const workflows = jsonParse<IWorkflowToImport[]>(fs.readFileSync(path, { encoding: 'utf8' }));
+
+			const workflowInstances = workflows.map((w) => Container.get(WorkflowRepository).create(w));
+			assertHasWorkflowsToImport(workflows);
+
+			return workflowInstances;
 		}
+	}
+
+	private async getProject(userId?: string, projectId?: string) {
+		if (projectId) {
+			return await Container.get(ProjectRepository).findOneByOrFail({ id: projectId });
+		}
+
+		if (!userId) {
+			const owner = await Container.get(UserRepository).findOneBy({ role: 'global:owner' });
+			if (!owner) {
+				throw new ApplicationError(`Failed to find owner. ${UM_FIX_INSTRUCTION}`);
+			}
+			userId = owner.id;
+		}
+
+		return await Container.get(ProjectRepository).getPersonalProjectForUserOrFail(userId);
 	}
 }

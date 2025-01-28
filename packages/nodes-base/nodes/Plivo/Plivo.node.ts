@@ -1,14 +1,16 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import { IDataObject, INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
-
-import { smsFields, smsOperations } from './SmsDescription';
-
-import { mmsFields, mmsOperations } from './MmsDescription';
+import {
+	type IExecuteFunctions,
+	type IDataObject,
+	type INodeExecutionData,
+	type INodeType,
+	type INodeTypeDescription,
+	NodeConnectionType,
+} from 'n8n-workflow';
 
 import { callFields, callOperations } from './CallDescription';
-
 import { plivoApiRequest } from './GenericFunctions';
+import { mmsFields, mmsOperations } from './MmsDescription';
+import { smsFields, smsOperations } from './SmsDescription';
 
 export class Plivo implements INodeType {
 	description: INodeTypeDescription = {
@@ -22,8 +24,8 @@ export class Plivo implements INodeType {
 		defaults: {
 			name: 'Plivo',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'plivoApi',
@@ -137,8 +139,8 @@ export class Plivo implements INodeType {
 			}
 
 			Array.isArray(responseData)
-				? returnData.push(...responseData)
-				: returnData.push(responseData);
+				? returnData.push(...(responseData as IDataObject[]))
+				: returnData.push(responseData as IDataObject);
 		}
 
 		return [this.helpers.returnJsonArray(returnData)];

@@ -1,12 +1,14 @@
-import { IExecuteFunctions } from 'n8n-core';
+import flow from 'lodash/flow';
+import omit from 'lodash/omit';
+import type {
+	IDataObject,
+	IExecuteFunctions,
+	IHttpRequestMethods,
+	ILoadOptionsFunctions,
+	IRequestOptions,
+} from 'n8n-workflow';
 
-import { IDataObject, ILoadOptionsFunctions } from 'n8n-workflow';
-
-import { OptionsWithUri } from 'request';
-
-import { flow, omit } from 'lodash';
-
-import {
+import type {
 	AllFieldsUi,
 	FieldWithPrimaryField,
 	LinksFieldContainer,
@@ -18,12 +20,12 @@ import {
 
 export async function actionNetworkApiRequest(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	body: IDataObject = {},
 	qs: IDataObject = {},
 ) {
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		method,
 		body,
 		qs,
@@ -39,7 +41,7 @@ export async function actionNetworkApiRequest(
 		delete options.qs;
 	}
 
-	return this.helpers.requestWithAuthentication.call(this, 'actionNetworkApi', options);
+	return await this.helpers.requestWithAuthentication.call(this, 'actionNetworkApi', options);
 }
 
 /**
@@ -60,7 +62,7 @@ const toItemsKey = (endpoint: string) => {
 
 export async function handleListing(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	body: IDataObject = {},
 	qs: IDataObject = {},
@@ -78,16 +80,24 @@ export async function handleListing(
 	const itemsKey = toItemsKey(endpoint);
 
 	do {
-		responseData = await actionNetworkApiRequest.call(this, method, endpoint, body, qs);
+		responseData = await actionNetworkApiRequest.call(
+			this,
+			method as IHttpRequestMethods,
+			endpoint,
+			body,
+			qs,
+		);
 		const items = responseData._embedded[itemsKey];
-		returnData.push(...items);
+		returnData.push(...(items as IDataObject[]));
 
 		if (!returnAll && returnData.length >= limit) {
 			return returnData.slice(0, limit);
 		}
 
 		if (responseData._links?.next?.href) {
-			const queryString = new URLSearchParams(responseData._links.next.href.split('?')[1]);
+			const queryString = new URLSearchParams(
+				responseData._links.next.href.split('?')[1] as string,
+			);
 			qs.page = queryString.get('page') as string;
 		}
 	} while (responseData._links?.next);
@@ -217,7 +227,7 @@ export const adjustEventPayload = adjustLocation;
 // ----------------------------------------
 
 async function loadResource(this: ILoadOptionsFunctions, resource: string) {
-	return handleListing.call(this, 'GET', `/${resource}`, {}, {}, { returnAll: true });
+	return await handleListing.call(this, 'GET', `/${resource}`, {}, {}, { returnAll: true });
 }
 
 export const resourceLoaders = {

@@ -1,29 +1,27 @@
-import { IExecuteFunctions } from 'n8n-core';
-import {
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
-	NodeApiError,
-	NodeOperationError,
+	JsonObject,
+	IRequestOptions,
 } from 'n8n-workflow';
-
-import { OptionsWithUri } from 'request';
+import { NodeApiError, NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
 export class OpenWeatherMap implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'OpenWeatherMap',
 		name: 'openWeatherMap',
-		icon: 'fa:sun',
+		icon: 'file:openWeatherMap.svg',
 		group: ['input'],
 		version: 1,
 		description: 'Gets current and future weather information',
 		defaults: {
 			name: 'OpenWeatherMap',
-			color: '#554455',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'openWeatherMapApi',
@@ -260,7 +258,7 @@ export class OpenWeatherMap implements INodeType {
 					);
 				}
 
-				const options: OptionsWithUri = {
+				const options: IRequestOptions = {
 					method: 'GET',
 					qs,
 					uri: `https://api.openweathermap.org/data/2.5/${endpoint}`,
@@ -271,11 +269,11 @@ export class OpenWeatherMap implements INodeType {
 				try {
 					responseData = await this.helpers.request(options);
 				} catch (error) {
-					throw new NodeApiError(this.getNode(), error);
+					throw new NodeApiError(this.getNode(), error as JsonObject);
 				}
 
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as IDataObject),
 					{ itemData: { item: i } },
 				);
 				returnData.push(...executionData);
@@ -288,6 +286,6 @@ export class OpenWeatherMap implements INodeType {
 			}
 		}
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

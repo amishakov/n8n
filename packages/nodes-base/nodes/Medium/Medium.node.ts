@@ -1,14 +1,13 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
-	NodeOperationError,
 } from 'n8n-workflow';
+import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
 import { mediumApiRequest } from './GenericFunctions';
 
@@ -25,8 +24,8 @@ export class Medium implements INodeType {
 		defaults: {
 			name: 'Medium',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'mediumApi',
@@ -134,7 +133,7 @@ export class Medium implements INodeType {
 				},
 				default: '',
 				description:
-					'Publication IDs. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+					'Publication IDs. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 			},
 			{
 				displayName: 'Title',
@@ -354,7 +353,7 @@ export class Medium implements INodeType {
 
 	methods = {
 		loadOptions: {
-			// Get all the available publications to display them to user so that he can
+			// Get all the available publications to display them to user so that they can
 			// select them easily
 			async getPublications(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];

@@ -1,4 +1,4 @@
-import { INodeProperties } from 'n8n-workflow';
+import type { INodeProperties } from 'n8n-workflow';
 
 export const attendeeOperations: INodeProperties[] = [
 	{
@@ -46,7 +46,7 @@ export const attendeeFields: INodeProperties[] = [
 		required: true,
 		default: '',
 		description:
-			'Key of the webinar that the attendee attended. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+			'Key of the webinar that the attendee attended. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 		displayOptions: {
 			show: {
 				resource: ['attendee'],
@@ -64,7 +64,7 @@ export const attendeeFields: INodeProperties[] = [
 		},
 		default: '',
 		description:
-			'Key of the session that the attendee attended. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+			'Key of the session that the attendee attended. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 		displayOptions: {
 			show: {
 				resource: ['attendee'],

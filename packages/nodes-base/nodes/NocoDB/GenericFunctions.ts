@@ -1,21 +1,23 @@
-import { IExecuteFunctions, IHookFunctions, ILoadOptionsFunctions } from 'n8n-core';
-
-import { OptionsWithUri } from 'request';
-
-import {
+import type {
 	IBinaryKeyData,
 	IDataObject,
+	IExecuteFunctions,
+	IHookFunctions,
+	IHttpRequestMethods,
+	ILoadOptionsFunctions,
 	INodeExecutionData,
+	IPairedItemData,
 	IPollFunctions,
-	jsonParse,
-	NodeOperationError,
+	IRequestOptions,
 } from 'n8n-workflow';
+import { jsonParse, NodeOperationError } from 'n8n-workflow';
 
 interface IAttachment {
 	url: string;
 	title: string;
 	mimetype: string;
 	size: number;
+	signedUrl?: string;
 }
 
 /**
@@ -24,7 +26,7 @@ interface IAttachment {
  */
 export async function apiRequest(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions | IPollFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	body: object,
 	query?: IDataObject,
@@ -40,14 +42,17 @@ export async function apiRequest(
 
 	const baseUrl = credentials.host as string;
 
-	query = query ?? {};
+	query = query || {};
 
-	const options: OptionsWithUri = {
+	if (!uri) {
+		uri = baseUrl.endsWith('/') ? `${baseUrl.slice(0, -1)}${endpoint}` : `${baseUrl}${endpoint}`;
+	}
+
+	const options: IRequestOptions = {
 		method,
 		body,
 		qs: query,
-		uri:
-			uri || baseUrl.endsWith('/') ? `${baseUrl.slice(0, -1)}${endpoint}` : `${baseUrl}${endpoint}`,
+		uri,
 		json: true,
 	};
 
@@ -59,7 +64,7 @@ export async function apiRequest(
 		delete options.body;
 	}
 
-	return this.helpers.requestWithAuthentication.call(this, authenticationMethod, options);
+	return await this.helpers.requestWithAuthentication.call(this, authenticationMethod, options);
 }
 
 /**
@@ -70,7 +75,7 @@ export async function apiRequest(
  */
 export async function apiRequestAllItems(
 	this: IHookFunctions | IExecuteFunctions | IPollFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	body: IDataObject,
 	query?: IDataObject,
@@ -88,7 +93,9 @@ export async function apiRequestAllItems(
 
 	do {
 		responseData = await apiRequest.call(this, method, endpoint, body, query);
-		version === 1 ? returnData.push(...responseData) : returnData.push(...responseData.list);
+		version === 1
+			? returnData.push(...(responseData as IDataObject[]))
+			: returnData.push(...(responseData.list as IDataObject[]));
 
 		query.offset += query.limit;
 	} while (version === 1 ? responseData.length !== 0 : responseData.pageInfo.isLastPage !== true);
@@ -100,18 +107,25 @@ export async function downloadRecordAttachments(
 	this: IExecuteFunctions | IPollFunctions,
 	records: IDataObject[],
 	fieldNames: string[],
+	pairedItem?: IPairedItemData[],
 ): Promise<INodeExecutionData[]> {
 	const elements: INodeExecutionData[] = [];
 
 	for (const record of records) {
 		const element: INodeExecutionData = { json: {}, binary: {} };
+		if (pairedItem) {
+			element.pairedItem = pairedItem;
+		}
 		element.json = record as unknown as IDataObject;
 		for (const fieldName of fieldNames) {
+			let attachments = record[fieldName] as IAttachment[];
+			if (typeof attachments === 'string') {
+				attachments = jsonParse<IAttachment[]>(record[fieldName] as string);
+			}
 			if (record[fieldName]) {
-				for (const [index, attachment] of jsonParse<IAttachment[]>(
-					record[fieldName] as string,
-				).entries()) {
-					const file = await apiRequest.call(this, 'GET', '', {}, {}, attachment.url, {
+				for (const [index, attachment] of attachments.entries()) {
+					const attachmentUrl = attachment.signedUrl || attachment.url;
+					const file: Buffer = await apiRequest.call(this, 'GET', '', {}, {}, attachmentUrl, {
 						json: false,
 						encoding: null,
 					});

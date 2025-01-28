@@ -1,13 +1,13 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import type {
 	IDataObject,
+	IExecuteFunctions,
+	IHttpRequestMethods,
 	ILoadOptionsFunctions,
 	INodePropertyOptions,
-	NodeApiError,
+	IRequestOptions,
+	JsonObject,
 } from 'n8n-workflow';
-
-import { OptionsWithUri } from 'request';
+import { NodeApiError } from 'n8n-workflow';
 
 /**
  * Return the access token URL based on the user's environment.
@@ -34,14 +34,14 @@ async function getBaseUrl(this: IExecuteFunctions | ILoadOptionsFunctions) {
  */
 export async function bitwardenApiRequest(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	qs: IDataObject,
 	body: IDataObject,
 	token: string,
 ): Promise<any> {
 	const baseUrl = await getBaseUrl.call(this);
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		headers: {
 			'user-agent': 'n8n',
 			Authorization: `Bearer ${token}`,
@@ -65,7 +65,7 @@ export async function bitwardenApiRequest(
 	try {
 		return await this.helpers.request(options);
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
@@ -77,7 +77,7 @@ export async function getAccessToken(
 ): Promise<any> {
 	const credentials = await this.getCredentials('bitwardenApi');
 
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		headers: {
 			'Content-Type': 'application/x-www-form-urlencoded',
 		},
@@ -99,7 +99,7 @@ export async function getAccessToken(
 		const { access_token } = await this.helpers.request(options);
 		return access_token;
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
@@ -109,7 +109,7 @@ export async function getAccessToken(
 export async function handleGetAll(
 	this: IExecuteFunctions,
 	i: number,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	qs: IDataObject,
 	body: IDataObject,
@@ -134,11 +134,11 @@ export async function loadResource(this: ILoadOptionsFunctions, resource: string
 	const token = await getAccessToken.call(this);
 	const endpoint = `/public/${resource}`;
 
-	const { data } = await bitwardenApiRequest.call(this, 'GET', endpoint, {}, {}, token);
+	const { data } = await bitwardenApiRequest.call(this, 'GET', endpoint, {}, {}, token as string);
 
 	data.forEach(({ id, name, externalId }: { id: string; name: string; externalId?: string }) => {
 		returnData.push({
-			name: externalId ?? name ?? id,
+			name: externalId || name || id,
 			value: id,
 		});
 	});

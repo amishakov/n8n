@@ -1,17 +1,16 @@
-import { IExecuteFunctions } from 'n8n-core';
-
 import {
-	IDataObject,
-	ILoadOptionsFunctions,
-	INodeExecutionData,
-	INodePropertyOptions,
-	INodeType,
-	INodeTypeDescription,
+	type IExecuteFunctions,
+	type IDataObject,
+	type ILoadOptionsFunctions,
+	type INodeExecutionData,
+	type INodePropertyOptions,
+	type INodeType,
+	type INodeTypeDescription,
+	NodeConnectionType,
 } from 'n8n-workflow';
 
-import { phantombusterApiRequest, validateJSON } from './GenericFunctions';
-
 import { agentFields, agentOperations } from './AgentDescription';
+import { phantombusterApiRequest, validateJSON } from './GenericFunctions';
 
 // import {
 // 	sentenceCase,
@@ -30,8 +29,8 @@ export class Phantombuster implements INodeType {
 		defaults: {
 			name: 'Phantombuster',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'phantombusterApi',
@@ -73,7 +72,7 @@ export class Phantombuster implements INodeType {
 				return returnData;
 			},
 
-			// Get all the arguments to display them to user so that he can
+			// Get all the arguments to display them to user so that they can
 			// select them easily
 			// async getArguments(
 			// 	this: ILoadOptionsFunctions,
@@ -102,7 +101,7 @@ export class Phantombuster implements INodeType {
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
-		const returnData: IDataObject[] = [];
+		const returnData: INodeExecutionData[] = [];
 		const length = items.length;
 		const qs: IDataObject = {};
 		let responseData;
@@ -165,7 +164,7 @@ export class Phantombuster implements INodeType {
 							if (resultObject === null) {
 								responseData = {};
 							} else {
-								responseData = JSON.parse(resultObject);
+								responseData = JSON.parse(resultObject as string);
 							}
 						}
 					}
@@ -247,20 +246,23 @@ export class Phantombuster implements INodeType {
 						}
 					}
 				}
-
-				if (Array.isArray(responseData)) {
-					returnData.push.apply(returnData, responseData as IDataObject[]);
-				} else if (responseData !== undefined) {
-					returnData.push(responseData as IDataObject);
-				}
+				const executionData = this.helpers.constructExecutionMetaData(
+					this.helpers.returnJsonArray(responseData as IDataObject[]),
+					{ itemData: { item: i } },
+				);
+				returnData.push(...executionData);
 			} catch (error) {
 				if (this.continueOnFail()) {
-					returnData.push({ error: error.message });
+					const executionData = this.helpers.constructExecutionMetaData(
+						this.helpers.returnJsonArray({ error: error.message }),
+						{ itemData: { item: i } },
+					);
+					returnData.push(...executionData);
 					continue;
 				}
 				throw error;
 			}
 		}
-		return [this.helpers.returnJsonArray(returnData)];
+		return [returnData];
 	}
 }

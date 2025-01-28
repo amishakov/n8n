@@ -1,14 +1,15 @@
-import { IHookFunctions, IWebhookFunctions } from 'n8n-core';
-
-import {
+import type {
+	IHookFunctions,
+	IWebhookFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
 	IWebhookResponseData,
-	NodeApiError,
+	JsonObject,
 } from 'n8n-workflow';
+import { NodeApiError, NodeConnectionType } from 'n8n-workflow';
 
 import { getresponseApiRequest, getResponseApiRequestAllItems } from './GenericFunctions';
 
@@ -25,7 +26,7 @@ export class GetResponseTrigger implements INodeType {
 			name: 'GetResponse Trigger',
 		},
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'getResponseApi',
@@ -110,7 +111,7 @@ export class GetResponseTrigger implements INodeType {
 				name: 'listIds',
 				type: 'multiOptions',
 				description:
-					'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>',
+					'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 				typeOptions: {
 					loadOptionsMethod: 'getLists',
 				},
@@ -119,7 +120,7 @@ export class GetResponseTrigger implements INodeType {
 			{
 				displayName: 'Options',
 				name: 'options',
-				placeholder: 'Add Option',
+				placeholder: 'Add option',
 				type: 'collection',
 				default: {},
 				options: [
@@ -137,7 +138,7 @@ export class GetResponseTrigger implements INodeType {
 
 	methods = {
 		loadOptions: {
-			// Get all the available teams to display them to user so that he can
+			// Get all the available teams to display them to user so that they can
 			// select them easily
 			async getLists(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -154,7 +155,6 @@ export class GetResponseTrigger implements INodeType {
 		},
 	};
 
-	// @ts-ignore (because of request)
 	webhookMethods = {
 		default: {
 			async checkExists(this: IHookFunctions): Promise<boolean> {
@@ -166,7 +166,7 @@ export class GetResponseTrigger implements INodeType {
 
 					if (data.url !== webhookUrl) {
 						if (!deleteCurrentSubscription) {
-							throw new NodeApiError(this.getNode(), data, {
+							throw new NodeApiError(this.getNode(), data as JsonObject, {
 								message: `The webhook (${data.url}) is active in the account. Delete it manually or set the parameter "Delete Current Subscription" to true, and the node will delete it for you.`,
 							});
 						}

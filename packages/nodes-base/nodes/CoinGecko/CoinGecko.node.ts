@@ -1,6 +1,6 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import moment from 'moment-timezone';
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
@@ -8,14 +8,11 @@ import {
 	INodeType,
 	INodeTypeDescription,
 } from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
 
 import { coinFields, coinOperations } from './CoinDescription';
-
 import { eventFields, eventOperations } from './EventDescription';
-
 import { coinGeckoApiRequest, coinGeckoRequestAllItems } from './GenericFunctions';
-
-import moment from 'moment-timezone';
 
 export class CoinGecko implements INodeType {
 	description: INodeTypeDescription = {
@@ -29,8 +26,8 @@ export class CoinGecko implements INodeType {
 		defaults: {
 			name: 'CoinGecko',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		properties: [
 			{
 				displayName: 'Resource',
@@ -369,7 +366,7 @@ export class CoinGecko implements INodeType {
 							const marketCaps = respData.market_caps[idx][1];
 							const totalVolume = respData.total_volumes[idx][1];
 							responseData.push({
-								time: moment(time).toISOString(),
+								time: moment(time as string).toISOString(),
 								price,
 								marketCaps,
 								totalVolume,
@@ -397,7 +394,7 @@ export class CoinGecko implements INodeType {
 						for (let idx = 0; idx < responseData.length; idx++) {
 							const [time, open, high, low, close] = responseData[idx];
 							responseData[idx] = {
-								time: moment(time).toISOString(),
+								time: moment(time as string).toISOString(),
 								open,
 								high,
 								low,
@@ -473,7 +470,7 @@ export class CoinGecko implements INodeType {
 				}
 
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as IDataObject[]),
 					{ itemData: { item: i } },
 				);
 				returnData.push(...executionData);
@@ -486,6 +483,6 @@ export class CoinGecko implements INodeType {
 			}
 		}
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

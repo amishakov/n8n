@@ -1,4 +1,4 @@
-import {
+import type {
 	IAuthenticateGeneric,
 	ICredentialTestRequest,
 	ICredentialType,
@@ -25,6 +25,9 @@ export class SupabaseApi implements ICredentialType {
 			name: 'serviceRole',
 			type: 'string',
 			default: '',
+			typeOptions: {
+				password: true,
+			},
 		},
 	];
 

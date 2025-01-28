@@ -1,6 +1,5 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
@@ -8,9 +7,9 @@ import {
 	INodeType,
 	INodeTypeDescription,
 } from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
 
 import { cloudflareApiRequest, cloudflareApiRequestAllItems } from './GenericFunctions';
-
 import { zoneCertificateFields, zoneCertificateOperations } from './ZoneCertificateDescription';
 
 export class Cloudflare implements INodeType {
@@ -25,8 +24,8 @@ export class Cloudflare implements INodeType {
 		defaults: {
 			name: 'Cloudflare',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'cloudflareApi',
@@ -160,9 +159,12 @@ export class Cloudflare implements INodeType {
 				}
 
 				returnData.push(
-					...this.helpers.constructExecutionMetaData(this.helpers.returnJsonArray(responseData), {
-						itemData: { item: i },
-					}),
+					...this.helpers.constructExecutionMetaData(
+						this.helpers.returnJsonArray(responseData as IDataObject[]),
+						{
+							itemData: { item: i },
+						},
+					),
 				);
 			} catch (error) {
 				if (this.continueOnFail()) {

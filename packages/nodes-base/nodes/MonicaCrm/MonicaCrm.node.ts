@@ -1,19 +1,12 @@
-import { IExecuteFunctions } from 'n8n-core';
-
 import {
-	IDataObject,
-	ILoadOptionsFunctions,
-	INodeExecutionData,
-	INodeType,
-	INodeTypeDescription,
+	type IExecuteFunctions,
+	type IDataObject,
+	type ILoadOptionsFunctions,
+	type INodeExecutionData,
+	type INodeType,
+	type INodeTypeDescription,
+	NodeConnectionType,
 } from 'n8n-workflow';
-
-import {
-	getDateParts,
-	monicaCrmApiRequest,
-	monicaCrmApiRequestAllItems,
-	toOptions,
-} from './GenericFunctions';
 
 import {
 	activityFields,
@@ -41,8 +34,13 @@ import {
 	taskFields,
 	taskOperations,
 } from './descriptions';
-
-import { LoaderGetResponse, Option } from './types';
+import {
+	getDateParts,
+	monicaCrmApiRequest,
+	monicaCrmApiRequestAllItems,
+	toOptions,
+} from './GenericFunctions';
+import type { LoaderGetResponse, Option } from './types';
 
 export class MonicaCrm implements INodeType {
 	description: INodeTypeDescription = {
@@ -57,8 +55,8 @@ export class MonicaCrm implements INodeType {
 		defaults: {
 			name: 'Monica CRM',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'monicaCrmApi',
@@ -1166,13 +1164,13 @@ export class MonicaCrm implements INodeType {
 			}
 
 			const executionData = this.helpers.constructExecutionMetaData(
-				this.helpers.returnJsonArray(responseData),
+				this.helpers.returnJsonArray(responseData as IDataObject[]),
 				{ itemData: { item: i } },
 			);
 
 			returnData.push(...executionData);
 		}
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

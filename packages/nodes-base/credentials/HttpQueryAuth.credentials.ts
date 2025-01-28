@@ -1,4 +1,4 @@
-import { ICredentialType, INodeProperties } from 'n8n-workflow';
+import type { ICredentialType, INodeProperties, Icon } from 'n8n-workflow';
 
 export class HttpQueryAuth implements ICredentialType {
 	name = 'httpQueryAuth';
@@ -9,7 +9,7 @@ export class HttpQueryAuth implements ICredentialType {
 
 	genericAuth = true;
 
-	icon = 'node:n8n-nodes-base.httpRequest';
+	icon: Icon = 'node:n8n-nodes-base.httpRequest';
 
 	properties: INodeProperties[] = [
 		{
@@ -22,6 +22,9 @@ export class HttpQueryAuth implements ICredentialType {
 			displayName: 'Value',
 			name: 'value',
 			type: 'string',
+			typeOptions: {
+				password: true,
+			},
 			default: '',
 		},
 	];

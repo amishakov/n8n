@@ -1,10 +1,15 @@
-import { IHookFunctions, IWebhookFunctions } from 'n8n-core';
-
-import { IDataObject, INodeType, INodeTypeDescription, IWebhookResponseData } from 'n8n-workflow';
+import { createHmac } from 'crypto';
+import {
+	type IHookFunctions,
+	type IWebhookFunctions,
+	type IDataObject,
+	type INodeType,
+	type INodeTypeDescription,
+	type IWebhookResponseData,
+	NodeConnectionType,
+} from 'n8n-workflow';
 
 import { shopifyApiRequest } from './GenericFunctions';
-
-import { createHmac } from 'crypto';
 
 export class ShopifyTrigger implements INodeType {
 	description: INodeTypeDescription = {
@@ -19,7 +24,7 @@ export class ShopifyTrigger implements INodeType {
 			name: 'Shopify Trigger',
 		},
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'shopifyApi',
@@ -325,7 +330,6 @@ export class ShopifyTrigger implements INodeType {
 		],
 	};
 
-	// @ts-ignore (because of request)
 	webhookMethods = {
 		default: {
 			async checkExists(this: IHookFunctions): Promise<boolean> {
@@ -422,7 +426,7 @@ export class ShopifyTrigger implements INodeType {
 			return {};
 		}
 		return {
-			workflowData: [this.helpers.returnJsonArray(req.body)],
+			workflowData: [this.helpers.returnJsonArray(req.body as IDataObject)],
 		};
 	}
 }

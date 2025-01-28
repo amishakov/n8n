@@ -1,19 +1,18 @@
-import { IPollFunctions } from 'n8n-core';
-
-import {
+import moment from 'moment-timezone';
+import type {
+	IPollFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
-	NodeApiError,
 } from 'n8n-workflow';
+import { NodeConnectionType, NodeApiError } from 'n8n-workflow';
 
-import { extractId, googleApiRequest, googleApiRequestAllItems } from './GenericFunctions';
-
-import moment from 'moment';
-import { fileSearch, folderSearch } from './SearchFunctions';
+import { extractId, googleApiRequest, googleApiRequestAllItems } from './v1/GenericFunctions';
+import { fileSearch, folderSearch } from './v2/methods/listSearch';
+import { GOOGLE_DRIVE_FILE_URL_REGEX, GOOGLE_DRIVE_FOLDER_URL_REGEX } from '../constants';
 
 export class GoogleDriveTrigger implements INodeType {
 	description: INodeTypeDescription = {
@@ -49,7 +48,7 @@ export class GoogleDriveTrigger implements INodeType {
 		],
 		polling: true,
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		properties: [
 			{
 				displayName: 'Credential Type',
@@ -113,15 +112,13 @@ export class GoogleDriveTrigger implements INodeType {
 						placeholder: 'https://drive.google.com/file/d/1wroCSfK-hupQIYf_xzeoUEzOhvfTFH2P/edit',
 						extractValue: {
 							type: 'regex',
-							regex:
-								'https:\\/\\/(?:drive|docs)\\.google\\.com\\/\\w+\\/d\\/([0-9a-zA-Z\\-_]+)(?:\\/.*|)',
+							regex: GOOGLE_DRIVE_FILE_URL_REGEX,
 						},
 						validation: [
 							{
 								type: 'regex',
 								properties: {
-									regex:
-										'https:\\/\\/(?:drive|docs)\\.google.com\\/\\w+\\/d\\/([0-9a-zA-Z\\-_]+)(?:\\/.*|)',
+									regex: GOOGLE_DRIVE_FILE_URL_REGEX,
 									errorMessage: 'Not a valid Google Drive File URL',
 								},
 							},
@@ -193,15 +190,13 @@ export class GoogleDriveTrigger implements INodeType {
 						placeholder: 'https://drive.google.com/drive/folders/1Tx9WHbA3wBpPB4C_HcoZDH9WZFWYxAMU',
 						extractValue: {
 							type: 'regex',
-							regex:
-								'https:\\/\\/drive\\.google\\.com\\/\\w+\\/folders\\/([0-9a-zA-Z\\-_]+)(?:\\/.*|)',
+							regex: GOOGLE_DRIVE_FOLDER_URL_REGEX,
 						},
 						validation: [
 							{
 								type: 'regex',
 								properties: {
-									regex:
-										'https:\\/\\/drive\\.google\\.com\\/\\w+\\/folders\\/([0-9a-zA-Z\\-_]+)(?:\\/.*|)',
+									regex: GOOGLE_DRIVE_FOLDER_URL_REGEX,
 									errorMessage: 'Not a valid Google Drive Folder URL',
 								},
 							},
@@ -299,7 +294,7 @@ export class GoogleDriveTrigger implements INodeType {
 				default: 'root',
 				required: true,
 				description:
-					'The drive to monitor. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+					'The drive to monitor. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 			},
 			{
 				displayName: 'Watch For',
@@ -348,7 +343,7 @@ export class GoogleDriveTrigger implements INodeType {
 						triggerOn: ['specificFile'],
 					},
 				},
-				placeholder: 'Add Option',
+				placeholder: 'Add option',
 				default: {},
 				options: [
 					{
@@ -403,7 +398,7 @@ export class GoogleDriveTrigger implements INodeType {
 			folderSearch,
 		},
 		loadOptions: {
-			// Get all the calendars to display them to user so that he can
+			// Get all the calendars to display them to user so that they can
 			// select them easily
 			async getDrives(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -433,7 +428,12 @@ export class GoogleDriveTrigger implements INodeType {
 		const event = this.getNodeParameter('event') as string;
 		const webhookData = this.getWorkflowStaticData('node');
 		const options = this.getNodeParameter('options', {}) as IDataObject;
-		const qs: IDataObject = {};
+		const qs: IDataObject = {
+			includeItemsFromAllDrives: true,
+			supportsAllDrives: true,
+			spaces: 'appDataFolder, drive',
+			corpora: 'allDrives',
+		};
 
 		const now = moment().utc().format();
 

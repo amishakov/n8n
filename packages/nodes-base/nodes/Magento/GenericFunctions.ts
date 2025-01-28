@@ -1,19 +1,22 @@
-import { OptionsWithUri } from 'request';
-
-import {
+import type {
+	IDataObject,
 	IExecuteFunctions,
 	IHookFunctions,
 	ILoadOptionsFunctions,
 	IWebhookFunctions,
-} from 'n8n-core';
+	INodeProperties,
+	INodePropertyOptions,
+	JsonObject,
+	IHttpRequestMethods,
+	IRequestOptions,
+} from 'n8n-workflow';
+import { ApplicationError, NodeApiError } from 'n8n-workflow';
 
-import { IDataObject, INodeProperties, INodePropertyOptions, NodeApiError } from 'n8n-workflow';
-
-import { Address, Filter, FilterGroup, ProductAttribute, Search } from './Types';
+import type { Filter, Address, Search, FilterGroup, ProductAttribute } from './types';
 
 export async function magentoApiRequest(
 	this: IWebhookFunctions | IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	resource: string,
 
 	body: any = {},
@@ -24,30 +27,29 @@ export async function magentoApiRequest(
 ): Promise<any> {
 	const credentials = await this.getCredentials('magento2Api');
 
-	let options: OptionsWithUri = {
+	let options: IRequestOptions = {
 		method,
 		body,
 		qs,
-		uri: uri ?? `${credentials.host}${resource}`,
+		uri: uri || `${credentials.host}${resource}`,
 		json: true,
 	};
 
 	try {
 		options = Object.assign({}, options, option);
-		if (Object.keys(body).length === 0) {
+		if (Object.keys(body as IDataObject).length === 0) {
 			delete options.body;
 		}
-		//@ts-ignore
 		return await this.helpers.requestWithAuthentication.call(this, 'magento2Api', options);
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
 export async function magentoApiRequestAllItems(
 	this: IHookFunctions | ILoadOptionsFunctions | IExecuteFunctions,
 	propertyName: string,
-	method: string,
+	method: IHttpRequestMethods,
 	resource: string,
 
 	body: any = {},
@@ -59,7 +61,7 @@ export async function magentoApiRequestAllItems(
 
 	do {
 		responseData = await magentoApiRequest.call(this, method, resource, body, query);
-		returnData.push.apply(returnData, responseData[propertyName]);
+		returnData.push.apply(returnData, responseData[propertyName] as IDataObject[]);
 		query.current_page = query.current_page ? (query.current_page as number)++ : 1;
 	} while (returnData.length < responseData.total_count);
 
@@ -113,7 +115,7 @@ export function getAddressesUi(): INodeProperties {
 						name: 'country_id',
 						type: 'options',
 						description:
-							'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>',
+							'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 						typeOptions: {
 							loadOptionsMethod: 'getCountries',
 						},
@@ -403,7 +405,7 @@ export function getSearchFilters(
 			displayName: 'Options',
 			name: 'options',
 			type: 'collection',
-			placeholder: 'Add Option',
+			placeholder: 'Add option',
 			default: {},
 			displayOptions: {
 				show: {
@@ -478,7 +480,7 @@ export function getFilterQuery(data: {
 	sort: [{ direction: string; field: string }];
 }): Search {
 	if (!data.hasOwnProperty('conditions') || data.conditions?.length === 0) {
-		throw new Error('At least one filter has to be set');
+		throw new ApplicationError('At least one filter has to be set', { level: 'warning' });
 	}
 
 	if (data.matchType === 'anyFilter') {
@@ -553,7 +555,7 @@ export function getCustomerOptionalFields(): INodeProperties[] {
 							name: 'attribute_code',
 							type: 'options',
 							description:
-								'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>',
+								'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 							typeOptions: {
 								loadOptionsMethod: 'getCustomAttributes',
 							},
@@ -612,7 +614,7 @@ export function getCustomerOptionalFields(): INodeProperties[] {
 			name: 'group_id',
 			type: 'options',
 			description:
-				'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>',
+				'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 			typeOptions: {
 				loadOptionsMethod: 'getGroups',
 			},
@@ -648,7 +650,7 @@ export function getCustomerOptionalFields(): INodeProperties[] {
 			name: 'store_id',
 			type: 'options',
 			description:
-				'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>',
+				'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 			typeOptions: {
 				loadOptionsMethod: 'getStores',
 			},
@@ -677,7 +679,7 @@ export function getCustomerOptionalFields(): INodeProperties[] {
 			name: 'website_id',
 			type: 'options',
 			description:
-				'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>',
+				'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 			displayOptions: {
 				show: {
 					'/operation': ['create'],
@@ -698,7 +700,7 @@ export function getProductOptionalFields(): INodeProperties[] {
 			name: 'attribute_set_id',
 			type: 'options',
 			description:
-				'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>',
+				'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 			displayOptions: {
 				show: {
 					'/operation': ['update'],
@@ -794,7 +796,7 @@ export function getProductOptionalFields(): INodeProperties[] {
 			name: 'type_id',
 			type: 'options',
 			description:
-				'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>',
+				'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 			typeOptions: {
 				loadOptionsMethod: 'getProductTypes',
 			},

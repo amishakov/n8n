@@ -1,439 +1,201 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
-/* eslint-disable @typescript-eslint/no-shadow */
-/* eslint-disable @typescript-eslint/unbound-method */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/restrict-template-expressions */
-import express from 'express';
-import http from 'http';
-import PCancelable from 'p-cancelable';
-
-import { Command, flags } from '@oclif/command';
-import { BinaryDataManager, UserSettings, WorkflowExecute } from 'n8n-core';
-
-import {
-	IExecuteResponsePromiseData,
-	INodeTypes,
-	IRun,
-	Workflow,
-	LoggerProxy,
-	ErrorReporterProxy as ErrorReporter,
-	sleep,
-} from 'n8n-workflow';
-
-import { CredentialsOverwrites } from '@/CredentialsOverwrites';
-import { CredentialTypes } from '@/CredentialTypes';
-import * as Db from '@/Db';
-import { ExternalHooks } from '@/ExternalHooks';
-import { NodeTypes } from '@/NodeTypes';
-import * as ResponseHelper from '@/ResponseHelper';
-import * as WebhookHelpers from '@/WebhookHelpers';
-import * as WorkflowExecuteAdditionalData from '@/WorkflowExecuteAdditionalData';
-import { InternalHooksManager } from '@/InternalHooksManager';
-import { LoadNodesAndCredentials } from '@/LoadNodesAndCredentials';
-import { getLogger } from '@/Logger';
-import { PermissionChecker } from '@/UserManagement/PermissionChecker';
+import { Container } from '@n8n/di';
+import { Flags, type Config } from '@oclif/core';
 
 import config from '@/config';
-import * as Queue from '@/Queue';
-import * as CrashJournal from '@/CrashJournal';
-import { getWorkflowOwner } from '@/UserManagement/UserManagementHelper';
-import { generateFailedExecutionFromError } from '@/WorkflowHelpers';
-import { N8N_VERSION } from '@/constants';
-import { initErrorHandling } from '@/ErrorReporting';
+import { N8N_VERSION, inTest } from '@/constants';
+import { WorkerMissingEncryptionKey } from '@/errors/worker-missing-encryption-key.error';
+import { EventMessageGeneric } from '@/eventbus/event-message-classes/event-message-generic';
+import { MessageEventBus } from '@/eventbus/message-event-bus/message-event-bus';
+import { LogStreamingEventRelay } from '@/events/relays/log-streaming.event-relay';
+import { PubSubHandler } from '@/scaling/pubsub/pubsub-handler';
+import { Subscriber } from '@/scaling/pubsub/subscriber.service';
+import type { ScalingService } from '@/scaling/scaling.service';
+import type { WorkerServerEndpointsConfig } from '@/scaling/worker-server';
+import { OrchestrationService } from '@/services/orchestration.service';
 
-const exitWithCrash = async (message: string, error: unknown) => {
-	ErrorReporter.error(new Error(message, { cause: error }), { level: 'fatal' });
-	await sleep(2000);
-	process.exit(1);
-};
+import { BaseCommand } from './base-command';
 
-const exitSuccessFully = async () => {
-	try {
-		await CrashJournal.cleanup();
-	} finally {
-		process.exit();
-	}
-};
-
-export class Worker extends Command {
+export class Worker extends BaseCommand {
 	static description = '\nStarts a n8n worker';
 
 	static examples = ['$ n8n worker --concurrency=5'];
 
 	static flags = {
-		help: flags.help({ char: 'h' }),
-		concurrency: flags.integer({
+		help: Flags.help({ char: 'h' }),
+		concurrency: Flags.integer({
 			default: 10,
 			description: 'How many jobs can run in parallel.',
 		}),
 	};
 
-	static runningJobs: {
-		[key: string]: PCancelable<IRun>;
-	} = {};
+	/**
+	 * How many jobs this worker may run concurrently.
+	 *
+	 * Taken from env var `N8N_CONCURRENCY_PRODUCTION_LIMIT` if set to a value
+	 * other than -1, else taken from `--concurrency` flag.
+	 */
+	concurrency: number;
 
-	static jobQueue: Queue.JobQueue;
+	scalingService: ScalingService;
+
+	override needsCommunityPackages = true;
 
 	/**
 	 * Stop n8n in a graceful way.
 	 * Make for example sure that all the webhooks from third party services
 	 * get removed.
 	 */
-	static async stopProcess() {
-		LoggerProxy.info('Stopping n8n...');
-
-		// Stop accepting new jobs
-		// eslint-disable-next-line @typescript-eslint/no-floating-promises
-		Worker.jobQueue.pause(true);
+	async stopProcess() {
+		this.logger.info('Stopping worker...');
 
 		try {
-			const externalHooks = ExternalHooks();
-			await externalHooks.run('n8n.stop', []);
-
-			const maxStopTime = config.getEnv('queue.bull.gracefulShutdownTimeout') * 1000;
-
-			const stopTime = new Date().getTime() + maxStopTime;
-
-			setTimeout(async () => {
-				// In case that something goes wrong with shutdown we
-				// kill after max. 30 seconds no matter what
-				await exitSuccessFully();
-			}, maxStopTime);
-
-			// Wait for active workflow executions to finish
-			let count = 0;
-			while (Object.keys(Worker.runningJobs).length !== 0) {
-				if (count++ % 4 === 0) {
-					const waitLeft = Math.ceil((stopTime - new Date().getTime()) / 1000);
-					LoggerProxy.info(
-						`Waiting for ${
-							Object.keys(Worker.runningJobs).length
-						} active executions to finish... (wait ${waitLeft} more seconds)`,
-					);
-				}
-				// eslint-disable-next-line no-await-in-loop
-				await sleep(500);
-			}
+			await this.externalHooks?.run('n8n.stop', []);
 		} catch (error) {
-			await exitWithCrash('There was an error shutting down n8n.', error);
+			await this.exitWithCrash('Error shutting down worker', error);
 		}
 
-		await exitSuccessFully();
+		await this.exitSuccessFully();
 	}
 
-	async runJob(job: Queue.Job, nodeTypes: INodeTypes): Promise<Queue.JobResponse> {
-		const { executionId, loadStaticData } = job.data;
-		const executionDb = await Db.collections.Execution.findOneBy({ id: executionId });
+	constructor(argv: string[], cmdConfig: Config) {
+		if (!process.env.N8N_ENCRYPTION_KEY) throw new WorkerMissingEncryptionKey();
 
-		if (!executionDb) {
-			LoggerProxy.error(
-				`Worker failed to find data of execution "${executionId}" in database. Cannot continue.`,
-				{ executionId },
-			);
-			throw new Error(
-				`Unable to find data of execution "${executionId}" in database. Aborting execution.`,
+		if (config.getEnv('executions.mode') !== 'queue') {
+			config.set('executions.mode', 'queue');
+		}
+
+		super(argv, cmdConfig);
+
+		this.logger = this.logger.scoped('scaling');
+	}
+
+	async init() {
+		const { QUEUE_WORKER_TIMEOUT } = process.env;
+		if (QUEUE_WORKER_TIMEOUT) {
+			this.gracefulShutdownTimeoutInS =
+				parseInt(QUEUE_WORKER_TIMEOUT, 10) || this.globalConfig.queue.bull.gracefulShutdownTimeout;
+			this.logger.warn(
+				'QUEUE_WORKER_TIMEOUT has been deprecated. Rename it to N8N_GRACEFUL_SHUTDOWN_TIMEOUT.',
 			);
 		}
-		const currentExecutionDb = ResponseHelper.unflattenExecutionData(executionDb);
-		LoggerProxy.info(
-			`Start job: ${job.id} (Workflow ID: ${currentExecutionDb.workflowData.id} | Execution: ${executionId})`,
-		);
+		await this.initCrashJournal();
 
-		const workflowOwner = await getWorkflowOwner(currentExecutionDb.workflowData.id!.toString());
+		this.logger.debug('Starting n8n worker...');
+		this.logger.debug(`Host ID: ${this.instanceSettings.hostId}`);
 
-		let { staticData } = currentExecutionDb.workflowData;
-		if (loadStaticData) {
-			const workflowData = await Db.collections.Workflow.findOne({
-				select: ['id', 'staticData'],
-				where: {
-					id: currentExecutionDb.workflowData.id,
+		await this.setConcurrency();
+		await super.init();
+
+		await this.initLicense();
+		this.logger.debug('License init complete');
+		await this.initBinaryDataService();
+		this.logger.debug('Binary data service init complete');
+		await this.initDataDeduplicationService();
+		this.logger.debug('Data deduplication service init complete');
+		await this.initExternalHooks();
+		this.logger.debug('External hooks init complete');
+		await this.initExternalSecrets();
+		this.logger.debug('External secrets init complete');
+		await this.initEventBus();
+		this.logger.debug('Event bus init complete');
+		await this.initScalingService();
+		await this.initOrchestration();
+		this.logger.debug('Orchestration init complete');
+
+		await Container.get(MessageEventBus).send(
+			new EventMessageGeneric({
+				eventName: 'n8n.worker.started',
+				payload: {
+					workerId: this.instanceSettings.hostId,
 				},
-			});
-			if (workflowData === null) {
-				LoggerProxy.error(
-					'Worker execution failed because workflow could not be found in database.',
-					{
-						workflowId: currentExecutionDb.workflowData.id,
-						executionId,
-					},
-				);
-				throw new Error(
-					`The workflow with the ID "${currentExecutionDb.workflowData.id}" could not be found`,
-				);
-			}
-			staticData = workflowData.staticData;
-		}
+			}),
+		);
 
-		let workflowTimeout = config.getEnv('executions.timeout'); // initialize with default
-		if (
-			// eslint-disable-next-line @typescript-eslint/prefer-optional-chain
-			currentExecutionDb.workflowData.settings &&
-			currentExecutionDb.workflowData.settings.executionTimeout
-		) {
-			workflowTimeout = currentExecutionDb.workflowData.settings.executionTimeout as number; // preference on workflow setting
+		const { taskRunners: taskRunnerConfig } = this.globalConfig;
+		if (taskRunnerConfig.enabled) {
+			const { TaskRunnerModule } = await import('@/task-runners/task-runner-module');
+			const taskRunnerModule = Container.get(TaskRunnerModule);
+			await taskRunnerModule.start();
 		}
+	}
 
-		let executionTimeoutTimestamp: number | undefined;
-		if (workflowTimeout > 0) {
-			workflowTimeout = Math.min(workflowTimeout, config.getEnv('executions.maxTimeout'));
-			executionTimeoutTimestamp = Date.now() + workflowTimeout * 1000;
-		}
-
-		const workflow = new Workflow({
-			id: currentExecutionDb.workflowData.id as string,
-			name: currentExecutionDb.workflowData.name,
-			nodes: currentExecutionDb.workflowData.nodes,
-			connections: currentExecutionDb.workflowData.connections,
-			active: currentExecutionDb.workflowData.active,
-			nodeTypes,
-			staticData,
-			settings: currentExecutionDb.workflowData.settings,
+	async initEventBus() {
+		await Container.get(MessageEventBus).initialize({
+			workerId: this.instanceSettings.hostId,
 		});
+		Container.get(LogStreamingEventRelay).init();
+	}
 
-		const additionalData = await WorkflowExecuteAdditionalData.getBase(
-			workflowOwner.id,
-			undefined,
-			executionTimeoutTimestamp,
-		);
-		additionalData.hooks = WorkflowExecuteAdditionalData.getWorkflowHooksWorkerExecuter(
-			currentExecutionDb.mode,
-			job.data.executionId,
-			currentExecutionDb.workflowData,
-			{ retryOf: currentExecutionDb.retryOf as string },
-		);
+	/**
+	 * Initializes the redis connection
+	 * A publishing connection to redis is created to publish events to the event log
+	 * A subscription connection to redis is created to subscribe to commands from the main process
+	 * The subscription connection adds a handler to handle the command messages
+	 */
+	async initOrchestration() {
+		await Container.get(OrchestrationService).init();
 
-		try {
-			await PermissionChecker.check(workflow, workflowOwner.id);
-		} catch (error) {
-			const failedExecution = generateFailedExecutionFromError(
-				currentExecutionDb.mode,
-				error,
-				error.node,
+		Container.get(PubSubHandler).init();
+		await Container.get(Subscriber).subscribe('n8n.commands');
+
+		this.logger.scoped(['scaling', 'pubsub']).debug('Pubsub setup completed');
+	}
+
+	async setConcurrency() {
+		const { flags } = await this.parse(Worker);
+
+		const envConcurrency = config.getEnv('executions.concurrency.productionLimit');
+
+		this.concurrency = envConcurrency !== -1 ? envConcurrency : flags.concurrency;
+
+		if (this.concurrency < 5) {
+			this.logger.warn(
+				'Concurrency is set to less than 5. THIS CAN LEAD TO AN UNSTABLE ENVIRONMENT. Please consider increasing it to at least 5 to make best use of the worker.',
 			);
-			await additionalData.hooks.executeHookFunctions('workflowExecuteAfter', [failedExecution]);
-			return {
-				success: true,
-			};
 		}
+	}
 
-		additionalData.hooks.hookFunctions.sendResponse = [
-			async (response: IExecuteResponsePromiseData): Promise<void> => {
-				const progress: Queue.WebhookResponse = {
-					executionId,
-					response: WebhookHelpers.encodeWebhookResponse(response),
-				};
-				await job.progress(progress);
-			},
-		];
+	async initScalingService() {
+		const { ScalingService } = await import('@/scaling/scaling.service');
+		this.scalingService = Container.get(ScalingService);
 
-		additionalData.executionId = executionId;
+		await this.scalingService.setupQueue();
 
-		let workflowExecute: WorkflowExecute;
-		let workflowRun: PCancelable<IRun>;
-		if (currentExecutionDb.data !== undefined) {
-			workflowExecute = new WorkflowExecute(
-				additionalData,
-				currentExecutionDb.mode,
-				currentExecutionDb.data,
-			);
-			workflowRun = workflowExecute.processRunExecutionData(workflow);
-		} else {
-			// Execute all nodes
-			// Can execute without webhook so go on
-			workflowExecute = new WorkflowExecute(additionalData, currentExecutionDb.mode);
-			workflowRun = workflowExecute.run(workflow);
-		}
-
-		Worker.runningJobs[job.id] = workflowRun;
-
-		// Wait till the execution is finished
-		await workflowRun;
-
-		delete Worker.runningJobs[job.id];
-
-		return {
-			success: true,
-		};
+		this.scalingService.setupWorker(this.concurrency);
 	}
 
 	async run() {
-		const logger = getLogger();
-		LoggerProxy.init(logger);
+		this.logger.info('\nn8n worker is now ready');
+		this.logger.info(` * Version: ${N8N_VERSION}`);
+		this.logger.info(` * Concurrency: ${this.concurrency}`);
+		this.logger.info('');
 
-		// eslint-disable-next-line no-console
-		console.info('Starting n8n worker...');
+		const endpointsConfig: WorkerServerEndpointsConfig = {
+			health: this.globalConfig.queue.health.active,
+			overwrites: this.globalConfig.credentials.overwrite.endpoint !== '',
+			metrics: this.globalConfig.endpoints.metrics.enable,
+		};
 
-		// Make sure that n8n shuts down gracefully if possible
-		process.once('SIGTERM', Worker.stopProcess);
-		process.once('SIGINT', Worker.stopProcess);
+		if (Object.values(endpointsConfig).some((e) => e)) {
+			const { WorkerServer } = await import('@/scaling/worker-server');
+			await Container.get(WorkerServer).init(endpointsConfig);
+		}
 
-		await initErrorHandling();
-		await CrashJournal.init();
+		if (!inTest && process.stdout.isTTY) {
+			process.stdin.setRawMode(true);
+			process.stdin.resume();
+			process.stdin.setEncoding('utf8');
 
-		// Wrap that the process does not close but we can still use async
-		await (async () => {
-			try {
-				const { flags } = this.parse(Worker);
+			process.stdin.on('data', (key: string) => {
+				if (key.charCodeAt(0) === 3) process.kill(process.pid, 'SIGINT'); // ctrl+c
+			});
+		}
 
-				// Start directly with the init of the database to improve startup time
-				const startDbInitPromise = Db.init().catch(async (error: Error) =>
-					exitWithCrash('There was an error initializing DB', error),
-				);
+		// Make sure that the process does not close
+		if (!inTest) await new Promise(() => {});
+	}
 
-				// Make sure the settings exist
-				await UserSettings.prepareUserSettings();
-
-				// Load all node and credential types
-				const loadNodesAndCredentials = LoadNodesAndCredentials();
-				await loadNodesAndCredentials.init();
-
-				// Add the found types to an instance other parts of the application can use
-				const nodeTypes = NodeTypes(loadNodesAndCredentials);
-				const credentialTypes = CredentialTypes(loadNodesAndCredentials);
-
-				// Load the credentials overwrites if any exist
-				await CredentialsOverwrites(credentialTypes).init();
-
-				// Load all external hooks
-				const externalHooks = ExternalHooks();
-				await externalHooks.init();
-
-				// Wait till the database is ready
-				await startDbInitPromise;
-
-				// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-				const redisConnectionTimeoutLimit = config.getEnv('queue.bull.redis.timeoutThreshold');
-
-				const queue = await Queue.getInstance();
-				Worker.jobQueue = queue.getBullObjectInstance();
-				// eslint-disable-next-line @typescript-eslint/no-floating-promises
-				Worker.jobQueue.process(flags.concurrency, async (job) => this.runJob(job, nodeTypes));
-
-				const instanceId = await UserSettings.getInstanceId();
-
-				await InternalHooksManager.init(instanceId, nodeTypes);
-
-				const binaryDataConfig = config.getEnv('binaryDataManager');
-				await BinaryDataManager.init(binaryDataConfig);
-
-				console.info('\nn8n worker is now ready');
-				console.info(` * Version: ${N8N_VERSION}`);
-				console.info(` * Concurrency: ${flags.concurrency}`);
-				console.info('');
-
-				Worker.jobQueue.on('global:progress', (jobId, progress) => {
-					// Progress of a job got updated which does get used
-					// to communicate that a job got canceled.
-
-					if (progress === -1) {
-						// Job has to get canceled
-						if (Worker.runningJobs[jobId] !== undefined) {
-							// Job is processed by current worker so cancel
-							Worker.runningJobs[jobId].cancel();
-							delete Worker.runningJobs[jobId];
-						}
-					}
-				});
-
-				let lastTimer = 0;
-				let cumulativeTimeout = 0;
-				Worker.jobQueue.on('error', (error: Error) => {
-					if (error.toString().includes('ECONNREFUSED')) {
-						const now = Date.now();
-						if (now - lastTimer > 30000) {
-							// Means we had no timeout at all or last timeout was temporary and we recovered
-							lastTimer = now;
-							cumulativeTimeout = 0;
-						} else {
-							cumulativeTimeout += now - lastTimer;
-							lastTimer = now;
-							if (cumulativeTimeout > redisConnectionTimeoutLimit) {
-								logger.error(
-									`Unable to connect to Redis after ${redisConnectionTimeoutLimit}. Exiting process.`,
-								);
-								process.exit(1);
-							}
-						}
-						logger.warn('Redis unavailable - trying to reconnect...');
-					} else if (error.toString().includes('Error initializing Lua scripts')) {
-						// This is a non-recoverable error
-						// Happens when worker starts and Redis is unavailable
-						// Even if Redis comes back online, worker will be zombie
-						logger.error('Error initializing worker.');
-						process.exit(2);
-					} else {
-						logger.error('Error from queue: ', error);
-						throw error;
-					}
-				});
-
-				if (config.getEnv('queue.health.active')) {
-					const port = config.getEnv('queue.health.port');
-
-					const app = express();
-					app.disable('x-powered-by');
-
-					const server = http.createServer(app);
-
-					app.get(
-						'/healthz',
-						// eslint-disable-next-line consistent-return
-						async (req: express.Request, res: express.Response) => {
-							LoggerProxy.debug('Health check started!');
-
-							const connection = Db.getConnection();
-
-							try {
-								if (!connection.isInitialized) {
-									// Connection is not active
-									throw new Error('No active database connection!');
-								}
-								// DB ping
-								await connection.query('SELECT 1');
-							} catch (e) {
-								LoggerProxy.error('No Database connection!', e);
-								const error = new ResponseHelper.ServiceUnavailableError('No Database connection!');
-								return ResponseHelper.sendErrorResponse(res, error);
-							}
-
-							// Just to be complete, generally will the worker stop automatically
-							// if it loses the connection to redis
-							try {
-								// Redis ping
-								await Worker.jobQueue.client.ping();
-							} catch (e) {
-								LoggerProxy.error('No Redis connection!', e);
-								const error = new ResponseHelper.ServiceUnavailableError('No Redis connection!');
-								return ResponseHelper.sendErrorResponse(res, error);
-							}
-
-							// Everything fine
-							const responseData = {
-								status: 'ok',
-							};
-
-							LoggerProxy.debug('Health check completed successfully!');
-
-							ResponseHelper.sendSuccessResponse(res, responseData, true, 200);
-						},
-					);
-
-					server.listen(port, () => {
-						console.info(`\nn8n worker health check via, port ${port}`);
-					});
-
-					server.on('error', (error: Error & { code: string }) => {
-						if (error.code === 'EADDRINUSE') {
-							console.log(
-								`n8n's port ${port} is already in use. Do you have the n8n main process running on that port?`,
-							);
-							process.exit(1);
-						}
-					});
-				}
-			} catch (error) {
-				await exitWithCrash('Worker process cannot continue.', error);
-			}
-		})();
+	async catch(error: Error) {
+		await this.exitWithCrash('Worker exiting due to an error.', error);
 	}
 }

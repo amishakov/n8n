@@ -1,13 +1,15 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import type {
+	IExecuteFunctions,
 	IBinaryKeyData,
 	IDataObject,
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
 } from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
 
+import { fileFields, fileOperations } from './FileDescription';
+import { formFields, formOperations } from './FormDescription';
 import {
 	downloadAttachments,
 	formatSubmission,
@@ -16,14 +18,8 @@ import {
 	loadForms,
 	parseStringList,
 } from './GenericFunctions';
-
-import { formFields, formOperations } from './FormDescription';
-
-import { submissionFields, submissionOperations } from './SubmissionDescription';
-
 import { hookFields, hookOperations } from './HookDescription';
-
-import { fileFields, fileOperations } from './FileDescription';
+import { submissionFields, submissionOperations } from './SubmissionDescription';
 
 export class KoBoToolbox implements INodeType {
 	description: INodeTypeDescription = {
@@ -37,8 +33,8 @@ export class KoBoToolbox implements INodeType {
 		defaults: {
 			name: 'KoBoToolbox',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'koBoToolboxApi',
@@ -200,7 +196,11 @@ export class KoBoToolbox implements INodeType {
 						// Download related attachments
 						for (const submission of responseData) {
 							binaryItems.push(
-								await downloadAttachments.call(this, submission, submissionQueryOptions),
+								await downloadAttachments.call(
+									this,
+									submission as IDataObject,
+									submissionQueryOptions,
+								),
 							);
 						}
 					}
@@ -237,7 +237,9 @@ export class KoBoToolbox implements INodeType {
 					if (options.download) {
 						// Download related attachments
 						for (const submission of responseData) {
-							binaryItems.push(await downloadAttachments.call(this, submission, options));
+							binaryItems.push(
+								await downloadAttachments.call(this, submission as IDataObject, options),
+							);
 						}
 					}
 				}
@@ -415,8 +417,8 @@ export class KoBoToolbox implements INodeType {
 						console.dir(response);
 
 						binaryItem.binary![binaryPropertyName] = await this.helpers.prepareBinaryData(
-							response,
-							responseData[0].metadata.filename,
+							response as Buffer,
+							responseData[0].metadata.filename as string,
 						);
 
 						binaryItems.push(binaryItem);

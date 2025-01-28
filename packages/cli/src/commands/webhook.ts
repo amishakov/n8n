@@ -1,88 +1,49 @@
-/* eslint-disable @typescript-eslint/unbound-method */
-import { BinaryDataManager, UserSettings } from 'n8n-core';
-import { Command, flags } from '@oclif/command';
+import { Container } from '@n8n/di';
+import { Flags } from '@oclif/core';
+import { ApplicationError } from 'n8n-workflow';
 
-import { LoggerProxy, ErrorReporterProxy as ErrorReporter, sleep } from 'n8n-workflow';
+import { ActiveExecutions } from '@/active-executions';
 import config from '@/config';
-import * as ActiveExecutions from '@/ActiveExecutions';
-import { CredentialsOverwrites } from '@/CredentialsOverwrites';
-import { CredentialTypes } from '@/CredentialTypes';
-import * as Db from '@/Db';
-import { ExternalHooks } from '@/ExternalHooks';
-import { LoadNodesAndCredentials } from '@/LoadNodesAndCredentials';
-import { NodeTypes } from '@/NodeTypes';
-import { InternalHooksManager } from '@/InternalHooksManager';
-import { WebhookServer } from '@/WebhookServer';
-import { getLogger } from '@/Logger';
-import { initErrorHandling } from '@/ErrorReporting';
-import * as CrashJournal from '@/CrashJournal';
+import { PubSubHandler } from '@/scaling/pubsub/pubsub-handler';
+import { Subscriber } from '@/scaling/pubsub/subscriber.service';
+import { OrchestrationService } from '@/services/orchestration.service';
+import { WebhookServer } from '@/webhooks/webhook-server';
 
-const exitWithCrash = async (message: string, error: unknown) => {
-	ErrorReporter.error(new Error(message, { cause: error }), { level: 'fatal' });
-	await sleep(2000);
-	process.exit(1);
-};
+import { BaseCommand } from './base-command';
 
-const exitSuccessFully = async () => {
-	try {
-		await CrashJournal.cleanup();
-	} finally {
-		process.exit();
-	}
-};
-
-export class Webhook extends Command {
+export class Webhook extends BaseCommand {
 	static description = 'Starts n8n webhook process. Intercepts only production URLs.';
 
 	static examples = ['$ n8n webhook'];
 
 	static flags = {
-		help: flags.help({ char: 'h' }),
+		help: Flags.help({ char: 'h' }),
 	};
+
+	protected server = Container.get(WebhookServer);
+
+	override needsCommunityPackages = true;
 
 	/**
 	 * Stops n8n in a graceful way.
 	 * Make for example sure that all the webhooks from third party services
 	 * get removed.
 	 */
-	// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-	static async stopProcess() {
-		LoggerProxy.info('\nStopping n8n...');
+	async stopProcess() {
+		this.logger.info('\nStopping n8n...');
 
 		try {
-			const externalHooks = ExternalHooks();
-			await externalHooks.run('n8n.stop', []);
+			await this.externalHooks?.run('n8n.stop', []);
 
-			setTimeout(async () => {
-				// In case that something goes wrong with shutdown we
-				// kill after max. 30 seconds no matter what
-				await exitSuccessFully();
-			}, 30000);
-
-			// Wait for active workflow executions to finish
-			const activeExecutionsInstance = ActiveExecutions.getInstance();
-			let executingWorkflows = activeExecutionsInstance.getActiveExecutions();
-
-			let count = 0;
-			while (executingWorkflows.length !== 0) {
-				if (count++ % 4 === 0) {
-					LoggerProxy.info(
-						`Waiting for ${executingWorkflows.length} active executions to finish...`,
-					);
-				}
-				// eslint-disable-next-line no-await-in-loop
-				await sleep(500);
-				executingWorkflows = activeExecutionsInstance.getActiveExecutions();
-			}
+			await Container.get(ActiveExecutions).shutdown();
 		} catch (error) {
-			await exitWithCrash('There was an error shutting down n8n.', error);
+			await this.exitWithCrash('There was an error shutting down n8n.', error);
 		}
 
-		await exitSuccessFully();
+		await this.exitSuccessFully();
 	}
 
-	// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
-	async run() {
+	async init() {
 		if (config.getEnv('executions.mode') !== 'queue') {
 			/**
 			 * It is technically possible to run without queues but
@@ -99,56 +60,52 @@ export class Webhook extends Command {
 			this.error('Webhook processes can only run with execution mode as queue.');
 		}
 
-		const logger = getLogger();
-		LoggerProxy.init(logger);
+		await this.initCrashJournal();
+		this.logger.debug('Crash journal initialized');
 
-		// Make sure that n8n shuts down gracefully if possible
-		process.once('SIGTERM', Webhook.stopProcess);
-		process.once('SIGINT', Webhook.stopProcess);
+		this.logger.info('Starting n8n webhook process...');
+		this.logger.debug(`Host ID: ${this.instanceSettings.hostId}`);
 
-		await initErrorHandling();
-		await CrashJournal.init();
+		await super.init();
 
-		try {
-			// Start directly with the init of the database to improve startup time
-			const startDbInitPromise = Db.init().catch(async (error: Error) =>
-				exitWithCrash('There was an error initializing DB', error),
+		await this.initLicense();
+		this.logger.debug('License init complete');
+		await this.initOrchestration();
+		this.logger.debug('Orchestration init complete');
+		await this.initBinaryDataService();
+		this.logger.debug('Binary data service init complete');
+		await this.initDataDeduplicationService();
+		this.logger.debug('Data deduplication service init complete');
+		await this.initExternalHooks();
+		this.logger.debug('External hooks init complete');
+		await this.initExternalSecrets();
+		this.logger.debug('External secrets init complete');
+	}
+
+	async run() {
+		if (this.globalConfig.multiMainSetup.enabled) {
+			throw new ApplicationError(
+				'Webhook process cannot be started when multi-main setup is enabled.',
 			);
-
-			// Make sure the settings exist
-			// eslint-disable-next-line @typescript-eslint/no-unused-vars
-			await UserSettings.prepareUserSettings();
-
-			// Load all node and credential types
-			const loadNodesAndCredentials = LoadNodesAndCredentials();
-			await loadNodesAndCredentials.init();
-
-			// Add the found types to an instance other parts of the application can use
-			const nodeTypes = NodeTypes(loadNodesAndCredentials);
-			const credentialTypes = CredentialTypes(loadNodesAndCredentials);
-
-			// Load the credentials overwrites if any exist
-			await CredentialsOverwrites(credentialTypes).init();
-
-			// Load all external hooks
-			const externalHooks = ExternalHooks();
-			await externalHooks.init();
-
-			// Wait till the database is ready
-			await startDbInitPromise;
-
-			const instanceId = await UserSettings.getInstanceId();
-			await InternalHooksManager.init(instanceId, nodeTypes);
-
-			const binaryDataConfig = config.getEnv('binaryDataManager');
-			await BinaryDataManager.init(binaryDataConfig);
-
-			const server = new WebhookServer();
-			await server.start();
-
-			console.info('Webhook listener waiting for requests.');
-		} catch (error) {
-			await exitWithCrash('Exiting due to error.', error);
 		}
+
+		const { ScalingService } = await import('@/scaling/scaling.service');
+		await Container.get(ScalingService).setupQueue();
+		await this.server.start();
+		this.logger.info('Webhook listener waiting for requests.');
+
+		// Make sure that the process does not close
+		await new Promise(() => {});
+	}
+
+	async catch(error: Error) {
+		await this.exitWithCrash('Exiting due to an error.', error);
+	}
+
+	async initOrchestration() {
+		await Container.get(OrchestrationService).init();
+
+		Container.get(PubSubHandler).init();
+		await Container.get(Subscriber).subscribe('n8n.commands');
 	}
 }

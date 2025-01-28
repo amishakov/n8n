@@ -1,12 +1,12 @@
-import { IHookFunctions, IWebhookFunctions } from 'n8n-core';
-
-import {
+import type {
+	IHookFunctions,
+	IWebhookFunctions,
 	IDataObject,
 	INodeType,
 	INodeTypeDescription,
 	IWebhookResponseData,
-	NodeOperationError,
 } from 'n8n-workflow';
+import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
 import { affinityApiRequest, eventsExist, mapResource } from './GenericFunctions';
 
@@ -14,8 +14,7 @@ export class AffinityTrigger implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Affinity Trigger',
 		name: 'affinityTrigger',
-		// eslint-disable-next-line n8n-nodes-base/node-class-description-icon-not-svg
-		icon: 'file:affinity.png',
+		icon: { light: 'file:affinity.svg', dark: 'file:affinity.dark.svg' },
 		group: ['trigger'],
 		version: 1,
 		description: 'Handle Affinity events via webhooks',
@@ -23,7 +22,7 @@ export class AffinityTrigger implements INodeType {
 			name: 'Affinity Trigger',
 		},
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'affinityApi',
@@ -152,7 +151,6 @@ export class AffinityTrigger implements INodeType {
 		],
 	};
 
-	// @ts-ignore (because of request)
 	webhookMethods = {
 		default: {
 			async checkExists(this: IHookFunctions): Promise<boolean> {
@@ -167,7 +165,10 @@ export class AffinityTrigger implements INodeType {
 				const events = this.getNodeParameter('events') as string[];
 
 				for (const webhook of responseData) {
-					if (eventsExist(webhook.subscriptions, events) && webhook.webhook_url === webhookUrl) {
+					if (
+						eventsExist(webhook.subscriptions as string[], events) &&
+						webhook.webhook_url === webhookUrl
+					) {
 						// Set webhook-id to be sure that it can be deleted
 						const webhookData = this.getWorkflowStaticData('node');
 						webhookData.webhookId = webhook.id as string;
@@ -217,7 +218,7 @@ export class AffinityTrigger implements INodeType {
 						return false;
 					}
 					// Remove from the static workflow data so that it is clear
-					// that no webhooks are registred anymore
+					// that no webhooks are registered anymore
 					delete webhookData.webhookId;
 				}
 				return true;

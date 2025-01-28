@@ -1,4 +1,6 @@
-import { Expression, INodeExecutionData, Workflow } from '../../src';
+import type { IDataObject } from '@/Interfaces';
+import { Workflow } from '@/Workflow';
+
 import * as Helpers from '../Helpers';
 
 export const nodeTypes = Helpers.NodeTypes();
@@ -17,18 +19,17 @@ export const workflow = new Workflow({
 	active: false,
 	nodeTypes,
 });
-export const expression = new Expression(workflow);
+export const expression = workflow.expression;
 
-export const evaluate = (value: string, values?: INodeExecutionData[]) =>
+export const evaluate = (value: string, values?: IDataObject[]) =>
 	expression.getParameterValue(
 		value,
 		null,
 		0,
 		0,
 		'node',
-		values ?? [],
+		values?.map((v) => ({ json: v })) ?? [],
 		'manual',
-		'America/New_York',
 		{},
 	);
 

@@ -1,24 +1,19 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
-	NodeOperationError,
 } from 'n8n-workflow';
+import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
 import { keysToSnakeCase, shopifyApiRequest, shopifyApiRequestAllItems } from './GenericFunctions';
-
 import { orderFields, orderOperations } from './OrderDescription';
-
+import type { IAddress, IDiscountCode, ILineItem, IOrder } from './OrderInterface';
 import { productFields, productOperations } from './ProductDescription';
-
-import { IAddress, IDiscountCode, ILineItem, IOrder } from './OrderInterface';
-
-import { IProduct } from './ProductInterface';
+import type { IProduct } from './ProductInterface';
 
 export class Shopify implements INodeType {
 	description: INodeTypeDescription = {
@@ -32,8 +27,8 @@ export class Shopify implements INodeType {
 		defaults: {
 			name: 'Shopify',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'shopifyApi',
@@ -64,6 +59,13 @@ export class Shopify implements INodeType {
 			},
 		],
 		properties: [
+			{
+				displayName: 'Shopify API Version: 2024-07',
+				type: 'notice',
+				name: 'apiVersion',
+				default: '',
+				isNodeSetting: true,
+			},
 			{
 				displayName: 'Authentication',
 				name: 'authentication',
@@ -112,7 +114,7 @@ export class Shopify implements INodeType {
 
 	methods = {
 		loadOptions: {
-			// Get all the available products to display them to user so that he can
+			// Get all the available products to display them to user so that they can
 			// select them easily
 			async getProducts(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -134,7 +136,7 @@ export class Shopify implements INodeType {
 				}
 				return returnData;
 			},
-			// Get all the available locations to display them to user so that he can
+			// Get all the available locations to display them to user so that they can
 			// select them easily
 			async getLocations(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -454,7 +456,7 @@ export class Shopify implements INodeType {
 				}
 
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as IDataObject[]),
 					{ itemData: { item: i } },
 				);
 
@@ -471,6 +473,6 @@ export class Shopify implements INodeType {
 				throw error;
 			}
 		}
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

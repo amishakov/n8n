@@ -1,7 +1,8 @@
-import { IDataObject } from 'n8n-workflow';
-import { IMembershipDto } from './CommonDtos';
+import type { IDataObject } from 'n8n-workflow';
 
-enum UserStatusEnum {
+import type { IMembershipDto } from './CommonDtos';
+
+const enum UserStatusEnum {
 	ACTIVE,
 	PENDING_EMAIL_VERIFICATION,
 	DELETED,

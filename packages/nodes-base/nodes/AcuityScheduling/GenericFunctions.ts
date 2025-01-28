@@ -1,21 +1,18 @@
-import { OptionsWithUri } from 'request';
-import {
+import type {
+	IDataObject,
 	IExecuteFunctions,
-	IExecuteSingleFunctions,
 	IHookFunctions,
+	IHttpRequestMethods,
 	ILoadOptionsFunctions,
+	IRequestOptions,
 	IWebhookFunctions,
-} from 'n8n-core';
-import { IDataObject, NodeApiError } from 'n8n-workflow';
+	JsonObject,
+} from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
 
 export async function acuitySchedulingApiRequest(
-	this:
-		| IHookFunctions
-		| IExecuteFunctions
-		| IExecuteSingleFunctions
-		| ILoadOptionsFunctions
-		| IWebhookFunctions,
-	method: string,
+	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions | IWebhookFunctions,
+	method: IHttpRequestMethods,
 	resource: string,
 	body: any = {},
 	qs: IDataObject = {},
@@ -24,7 +21,7 @@ export async function acuitySchedulingApiRequest(
 ): Promise<any> {
 	const authenticationMethod = this.getNodeParameter('authentication', 0);
 
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		headers: {
 			'Content-Type': 'application/json',
 		},
@@ -32,7 +29,7 @@ export async function acuitySchedulingApiRequest(
 		method,
 		qs,
 		body,
-		uri: uri ?? `https://acuityscheduling.com/api/v1${resource}`,
+		uri: uri || `https://acuityscheduling.com/api/v1${resource}`,
 		json: true,
 	};
 
@@ -57,6 +54,6 @@ export async function acuitySchedulingApiRequest(
 			);
 		}
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }

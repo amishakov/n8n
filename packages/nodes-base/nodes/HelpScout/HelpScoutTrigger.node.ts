@@ -1,10 +1,15 @@
-import { IHookFunctions, IWebhookFunctions } from 'n8n-core';
-
-import { IDataObject, INodeType, INodeTypeDescription, IWebhookResponseData } from 'n8n-workflow';
+import { createHmac } from 'crypto';
+import type {
+	IHookFunctions,
+	IWebhookFunctions,
+	IDataObject,
+	INodeType,
+	INodeTypeDescription,
+	IWebhookResponseData,
+} from 'n8n-workflow';
+import { NodeConnectionType, randomString } from 'n8n-workflow';
 
 import { helpscoutApiRequest, helpscoutApiRequestAllItems } from './GenericFunctions';
-
-import { createHmac } from 'crypto';
 
 export class HelpScoutTrigger implements INodeType {
 	description: INodeTypeDescription = {
@@ -18,7 +23,7 @@ export class HelpScoutTrigger implements INodeType {
 			name: 'HelpScout Trigger',
 		},
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'helpScoutOAuth2Api',
@@ -94,7 +99,6 @@ export class HelpScoutTrigger implements INodeType {
 		],
 	};
 
-	// @ts-ignore (because of request)
 	webhookMethods = {
 		default: {
 			async checkExists(this: IHookFunctions): Promise<boolean> {
@@ -137,7 +141,7 @@ export class HelpScoutTrigger implements INodeType {
 				const body = {
 					url: webhookUrl,
 					events,
-					secret: Math.random().toString(36).substring(2, 15),
+					secret: randomString(10).toLowerCase(),
 				};
 
 				const responseData = await helpscoutApiRequest.call(
@@ -170,7 +174,7 @@ export class HelpScoutTrigger implements INodeType {
 					}
 
 					// Remove from the static workflow data so that it is clear
-					// that no webhooks are registred anymore
+					// that no webhooks are registered anymore
 					delete webhookData.webhookId;
 					delete webhookData.secret;
 				}

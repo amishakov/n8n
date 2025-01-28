@@ -1,12 +1,11 @@
-import { BINARY_ENCODING } from 'n8n-core';
-import {
+import { BINARY_ENCODING } from 'n8n-workflow';
+import type {
 	ICredentialDataDecryptedObject,
 	ICredentialTestRequest,
 	ICredentialType,
 	IHttpRequestOptions,
 	INodeProperties,
 } from 'n8n-workflow';
-
 export class ShopifyApi implements ICredentialType {
 	name = 'shopifyApi';
 
@@ -43,6 +42,7 @@ export class ShopifyApi implements ICredentialType {
 			displayName: 'Shared Secret',
 			name: 'sharedSecret',
 			type: 'string',
+			typeOptions: { password: true },
 			default: '',
 		},
 	];
@@ -62,7 +62,7 @@ export class ShopifyApi implements ICredentialType {
 
 	test: ICredentialTestRequest = {
 		request: {
-			baseURL: '=https://{{$credentials.shopSubdomain}}.myshopify.com/admin/api/2019-10',
+			baseURL: '=https://{{$credentials.shopSubdomain}}.myshopify.com/admin/api/2024-07',
 			url: '/products.json',
 		},
 	};

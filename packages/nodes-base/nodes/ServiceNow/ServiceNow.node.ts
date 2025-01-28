@@ -1,15 +1,22 @@
-import { IExecuteFunctions, ILoadOptionsFunctions } from 'n8n-core';
-
-import {
-	IBinaryData,
+import type {
 	IDataObject,
+	IExecuteFunctions,
+	ILoadOptionsFunctions,
 	INodeExecutionData,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
-	NodeOperationError,
 } from 'n8n-workflow';
+import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
+import { attachmentFields, attachmentOperations } from './AttachmentDescription';
+import { businessServiceFields, businessServiceOperations } from './BusinessServiceDescription';
+import {
+	configurationItemsFields,
+	configurationItemsOperations,
+} from './ConfigurationItemsDescription';
+import { departmentFields, departmentOperations } from './DepartmentDescription';
+import { dictionaryFields, dictionaryOperations } from './DictionaryDescription';
 import {
 	mapEndpoint,
 	serviceNowApiRequest,
@@ -17,28 +24,10 @@ import {
 	serviceNowRequestAllItems,
 	sortData,
 } from './GenericFunctions';
-
-import { attachmentFields, attachmentOperations } from './AttachmentDescription';
-
-import { businessServiceFields, businessServiceOperations } from './BusinessServiceDescription';
-
-import {
-	configurationItemsFields,
-	configurationItemsOperations,
-} from './ConfigurationItemsDescription';
-
-import { departmentFields, departmentOperations } from './DepartmentDescription';
-
-import { dictionaryFields, dictionaryOperations } from './DictionaryDescription';
-
 import { incidentFields, incidentOperations } from './IncidentDescription';
-
 import { tableRecordFields, tableRecordOperations } from './TableRecordDescription';
-
 import { userFields, userOperations } from './UserDescription';
-
 import { userGroupFields, userGroupOperations } from './UserGroupDescription';
-
 import { userRoleFields, userRoleOperations } from './UserRoleDescription';
 
 export class ServiceNow implements INodeType {
@@ -53,8 +42,8 @@ export class ServiceNow implements INodeType {
 		defaults: {
 			name: 'ServiceNow',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'serviceNowOAuth2Api',
@@ -536,8 +525,8 @@ export class ServiceNow implements INodeType {
 									[outputField]: await serviceNowDownloadAttachment.call(
 										this,
 										endpoint,
-										fileMetadata.file_name,
-										fileMetadata.content_type,
+										fileMetadata.file_name as string,
+										fileMetadata.content_type as string,
 									),
 								},
 							};
@@ -605,17 +594,7 @@ export class ServiceNow implements INodeType {
 						const inputDataFieldName = this.getNodeParameter('inputDataFieldName', i) as string;
 						const options = this.getNodeParameter('options', i);
 
-						let binaryData: IBinaryData;
-
-						if (items[i].binary && items[i].binary![inputDataFieldName]) {
-							binaryData = items[i].binary![inputDataFieldName];
-						} else {
-							throw new NodeOperationError(
-								this.getNode(),
-								`No binary data property "${inputDataFieldName}" does not exists on item!`,
-								{ itemIndex: i },
-							);
-						}
+						const binaryData = this.helpers.assertBinaryData(i, inputDataFieldName);
 
 						const headers: IDataObject = {
 							'Content-Type': binaryData.mimeType,
@@ -1171,9 +1150,9 @@ export class ServiceNow implements INodeType {
 
 		if (resource === 'attachment') {
 			if (operation === 'get' || operation === 'getAll') {
-				return this.prepareOutputData(returnData);
+				return [returnData];
 			}
 		}
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

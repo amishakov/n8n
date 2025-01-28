@@ -1,34 +1,27 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import moment from 'moment-timezone';
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
-	NodeApiError,
-	NodeOperationError,
+	JsonObject,
 } from 'n8n-workflow';
+import { NodeApiError, NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
 import { couponFields, couponOperations } from './CouponDescription';
-
 import { paddleApiRequest, paddleApiRequestAllItems, validateJSON } from './GenericFunctions';
-
 import { paymentFields, paymentOperations } from './PaymentDescription';
-
 import { planFields, planOperations } from './PlanDescription';
-
 import { productFields, productOperations } from './ProductDescription';
-
 import { userFields, userOperations } from './UserDescription';
 
 // import {
 // 	orderOperations,
 // 	orderFields,
 // } from './OrderDescription';
-
-import moment from 'moment';
 
 export class Paddle implements INodeType {
 	description: INodeTypeDescription = {
@@ -43,8 +36,8 @@ export class Paddle implements INodeType {
 		defaults: {
 			name: 'Paddle',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'paddleApi',
@@ -120,7 +113,7 @@ export class Paddle implements INodeType {
 
 				// Alert user if there's no payments present to be loaded into payments property
 				if (paymentResponse.response === undefined || paymentResponse.response.length === 0) {
-					throw new NodeApiError(this.getNode(), paymentResponse, {
+					throw new NodeApiError(this.getNode(), paymentResponse as JsonObject, {
 						message: 'No payments on account.',
 					});
 				}
@@ -533,12 +526,12 @@ export class Paddle implements INodeType {
 				throw error;
 			}
 			const executionData = this.helpers.constructExecutionMetaData(
-				this.helpers.returnJsonArray(responseData),
+				this.helpers.returnJsonArray(responseData as IDataObject),
 				{ itemData: { item: i } },
 			);
 
 			returnData.push(...executionData);
 		}
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

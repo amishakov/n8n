@@ -1,4 +1,4 @@
-import { ReactionProperties } from '../../Interfaces';
+import type { ReactionProperties } from '../../Interfaces';
 
 export const reactionDeleteDescription: ReactionProperties = [
 	{
@@ -18,7 +18,7 @@ export const reactionDeleteDescription: ReactionProperties = [
 			},
 		},
 		description:
-			'ID of the user whose reaction to delete. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+			'ID of the user whose reaction to delete. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 	},
 	{
 		displayName: 'Post ID',

@@ -1,12 +1,17 @@
-import { OptionsWithUri } from 'request';
-
-import { IExecuteFunctions, ILoadOptionsFunctions } from 'n8n-core';
-
-import { IDataObject, INodePropertyOptions, JsonObject, NodeApiError } from 'n8n-workflow';
+import type {
+	IExecuteFunctions,
+	ILoadOptionsFunctions,
+	IDataObject,
+	INodePropertyOptions,
+	JsonObject,
+	IHttpRequestMethods,
+	IRequestOptions,
+} from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
 
 export async function serviceNowApiRequest(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	resource: string,
 
 	body: any = {},
@@ -25,15 +30,15 @@ export async function serviceNowApiRequest(
 		credentials = await this.getCredentials('serviceNowOAuth2Api');
 	}
 
-	const options: OptionsWithUri = {
+	const options = {
 		headers,
 		method,
 		qs,
 		body,
-		uri: uri ?? `https://${credentials.subdomain}.service-now.com/api${resource}`,
+		uri: uri || `https://${credentials.subdomain}.service-now.com/api${resource}`,
 		json: true,
-	};
-	if (!Object.keys(body).length) {
+	} satisfies IRequestOptions;
+	if (!Object.keys(body as IDataObject).length) {
 		delete options.body;
 	}
 
@@ -56,7 +61,7 @@ export async function serviceNowApiRequest(
 
 export async function serviceNowRequestAllItems(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	resource: string,
 
 	body: any = {},
@@ -72,7 +77,7 @@ export async function serviceNowRequestAllItems(
 	responseData = await serviceNowApiRequest.call(this, method, resource, body, query, undefined, {
 		resolveWithFullResponse: true,
 	});
-	returnData.push.apply(returnData, responseData.body.result);
+	returnData.push.apply(returnData, responseData.body.result as IDataObject[]);
 
 	const quantity = responseData.headers['x-total-count'];
 	const iterations = Math.round(quantity / page) + (quantity % page ? 1 : 0);
@@ -84,7 +89,7 @@ export async function serviceNowRequestAllItems(
 			resolveWithFullResponse: true,
 		});
 
-		returnData.push.apply(returnData, responseData.body.result);
+		returnData.push.apply(returnData, responseData.body.result as IDataObject[]);
 	}
 
 	return returnData;

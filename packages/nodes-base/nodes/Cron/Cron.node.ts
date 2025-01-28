@@ -1,14 +1,11 @@
-import { ITriggerFunctions } from 'n8n-core';
-import {
+import type {
+	ITriggerFunctions,
 	INodeType,
 	INodeTypeDescription,
 	ITriggerResponse,
-	NodeHelpers,
-	toCronExpression,
 	TriggerTime,
 } from 'n8n-workflow';
-
-import { CronJob } from 'cron';
+import { NodeConnectionType, NodeHelpers, toCronExpression } from 'n8n-workflow';
 
 export class Cron implements INodeType {
 	description: INodeTypeDescription = {
@@ -26,13 +23,13 @@ export class Cron implements INodeType {
 			name: 'Cron',
 			color: '#29a568',
 		},
-		// eslint-disable-next-line n8n-nodes-base/node-class-description-inputs-wrong-regular-node
+
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		properties: [
 			{
 				displayName:
-					'This workflow will run on the schedule you define here once you <a data-key="activate">activate</a> it.<br><br>For testing, you can also trigger it manually: by going back to the canvas and clicking ‘execute workflow’',
+					'This workflow will run on the schedule you define here once you <a data-key="activate">activate</a> it.<br><br>For testing, you can also trigger it manually: by going back to the canvas and clicking \'test workflow\'',
 				name: 'notice',
 				type: 'notice',
 				default: '',
@@ -67,27 +64,11 @@ export class Cron implements INodeType {
 			this.emit([this.helpers.returnJsonArray([{}])]);
 		};
 
-		const timezone = this.getTimezone();
-
-		// Start the cron-jobs
-		const cronJobs = cronTimes.map(
-			(cronTime) => new CronJob(cronTime, executeTrigger, undefined, true, timezone),
-		);
-
-		// Stop the cron-jobs
-		async function closeFunction() {
-			for (const cronJob of cronJobs) {
-				cronJob.stop();
-			}
-		}
-
-		async function manualTriggerFunction() {
-			executeTrigger();
-		}
+		// Register the cron-jobs
+		cronTimes.forEach((cronTime) => this.helpers.registerCron(cronTime, executeTrigger));
 
 		return {
-			closeFunction,
-			manualTriggerFunction,
+			manualTriggerFunction: async () => executeTrigger(),
 		};
 	}
 }

@@ -1,151 +1,122 @@
-import express from 'express';
+import nock from 'nock';
 
 import config from '@/config';
-import type { Role } from '@db/entities/Role';
-import * as testDb from './shared/testDb';
-import type { AuthAgent } from './shared/types';
-import * as utils from './shared/utils';
-import { ILicensePostResponse, ILicenseReadResponse } from '@/Interfaces';
-import { License } from '@/License';
+import { RESPONSE_ERROR_MESSAGES } from '@/constants';
+import type { User } from '@/databases/entities/user';
+import type { ILicensePostResponse, ILicenseReadResponse } from '@/interfaces';
+import { License } from '@/license';
+
+import { createUserShell } from './shared/db/users';
+import * as testDb from './shared/test-db';
+import type { SuperAgentTest } from './shared/types';
+import * as utils from './shared/utils/';
 
 const MOCK_SERVER_URL = 'https://server.com/v1';
 const MOCK_RENEW_OFFSET = 259200;
-const MOCK_INSTANCE_ID = 'instance-id';
 
-let app: express.Application;
-let globalOwnerRole: Role;
-let globalMemberRole: Role;
-let authAgent: AuthAgent;
-let license: License;
+let owner: User;
+let member: User;
+let authOwnerAgent: SuperAgentTest;
+let authMemberAgent: SuperAgentTest;
+
+const testServer = utils.setupTestServer({ endpointGroups: ['license'] });
 
 beforeAll(async () => {
-	app = await utils.initTestServer({ endpointGroups: ['license'], applyAuth: true });
-	await testDb.init();
+	owner = await createUserShell('global:owner');
+	member = await createUserShell('global:member');
 
-	globalOwnerRole = await testDb.getGlobalOwnerRole();
-	globalMemberRole = await testDb.getGlobalMemberRole();
-
-	authAgent = utils.createAuthAgent(app);
-
-	utils.initTestLogger();
-	utils.initTestTelemetry();
+	authOwnerAgent = testServer.authAgentFor(owner);
+	authMemberAgent = testServer.authAgentFor(member);
 
 	config.set('license.serverUrl', MOCK_SERVER_URL);
 	config.set('license.autoRenewEnabled', true);
 	config.set('license.autoRenewOffset', MOCK_RENEW_OFFSET);
 });
 
-beforeEach(async () => {
-	license = new License();
-	await license.init(MOCK_INSTANCE_ID);
-});
-
 afterEach(async () => {
 	await testDb.truncate(['Settings']);
 });
 
-afterAll(async () => {
-	await testDb.terminate();
-});
-
-test('GET /license should return license information to the instance owner', async () => {
-	const userShell = await testDb.createUserShell(globalOwnerRole);
-
-	const response = await authAgent(userShell).get('/license');
-
-	expect(response.statusCode).toBe(200);
-
-	// No license defined so we just expect the result to be the defaults
-	expect(response.body).toStrictEqual(DEFAULT_LICENSE_RESPONSE);
-});
-
-test('GET /license should return license information to a regular user', async () => {
-	const userShell = await testDb.createUserShell(globalMemberRole);
-
-	const response = await authAgent(userShell).get('/license');
-
-	expect(response.statusCode).toBe(200);
-
-	// No license defined so we just expect the result to be the defaults
-	expect(response.body).toStrictEqual(DEFAULT_LICENSE_RESPONSE);
-});
-
-test('POST /license/activate should work for instance owner', async () => {
-	const userShell = await testDb.createUserShell(globalOwnerRole);
-
-	const response = await authAgent(userShell)
-		.post('/license/activate')
-		.send({ activationKey: 'abcde' });
-
-	expect(response.statusCode).toBe(200);
-
-	// No license defined so we just expect the result to be the defaults
-	expect(response.body).toMatchObject(DEFAULT_POST_RESPONSE);
-});
-
-test('POST /license/activate does not work for regular users', async () => {
-	const userShell = await testDb.createUserShell(globalMemberRole);
-
-	const response = await authAgent(userShell)
-		.post('/license/activate')
-		.send({ activationKey: 'abcde' });
-
-	expect(response.statusCode).toBe(403);
-	expect(response.body.message).toBe(NON_OWNER_ACTIVATE_RENEW_MESSAGE);
-});
-
-test('POST /license/activate errors out properly', async () => {
-	License.prototype.activate = jest.fn().mockImplementation(() => {
-		throw new Error(INVALID_ACIVATION_KEY_MESSAGE);
+describe('GET /license', () => {
+	test('should return license information to the instance owner', async () => {
+		// No license defined so we just expect the result to be the defaults
+		await authOwnerAgent.get('/license').expect(200, DEFAULT_LICENSE_RESPONSE);
 	});
 
-	const userShell = await testDb.createUserShell(globalOwnerRole);
-
-	const response = await authAgent(userShell)
-		.post('/license/activate')
-		.send({ activationKey: 'abcde' });
-
-	expect(response.statusCode).toBe(400);
-	expect(response.body.message).toBe(INVALID_ACIVATION_KEY_MESSAGE);
+	test('should return license information to a regular user', async () => {
+		// No license defined so we just expect the result to be the defaults
+		await authMemberAgent.get('/license').expect(200, DEFAULT_LICENSE_RESPONSE);
+	});
 });
 
-test('POST /license/renew should work for instance owner', async () => {
-	const userShell = await testDb.createUserShell(globalOwnerRole);
+describe('POST /license/enterprise/request_trial', () => {
+	nock('https://enterprise.n8n.io').post('/enterprise-trial').reply(200);
 
-	const response = await authAgent(userShell).post('/license/renew');
-
-	expect(response.statusCode).toBe(200);
-
-	// No license defined so we just expect the result to be the defaults
-	expect(response.body).toMatchObject(DEFAULT_POST_RESPONSE);
-});
-
-test('POST /license/renew does not work for regular users', async () => {
-	const userShell = await testDb.createUserShell(globalMemberRole);
-
-	const response = await authAgent(userShell).post('/license/renew');
-
-	expect(response.statusCode).toBe(403);
-	expect(response.body.message).toBe(NON_OWNER_ACTIVATE_RENEW_MESSAGE);
-});
-
-test('POST /license/renew errors out properly', async () => {
-	License.prototype.renew = jest.fn().mockImplementation(() => {
-		throw new Error(RENEW_ERROR_MESSAGE);
+	test('should work for instance owner', async () => {
+		await authOwnerAgent.post('/license/enterprise/request_trial').expect(200);
 	});
 
-	const userShell = await testDb.createUserShell(globalOwnerRole);
+	test('does not work for regular users', async () => {
+		await authMemberAgent
+			.post('/license/enterprise/request_trial')
+			.expect(403, { status: 'error', message: RESPONSE_ERROR_MESSAGES.MISSING_SCOPE });
+	});
+});
 
-	const response = await authAgent(userShell).post('/license/renew');
+describe('POST /license/activate', () => {
+	test('should work for instance owner', async () => {
+		await authOwnerAgent
+			.post('/license/activate')
+			.send({ activationKey: 'abcde' })
+			.expect(200, DEFAULT_POST_RESPONSE);
+	});
 
-	expect(response.statusCode).toBe(400);
-	expect(response.body.message).toBe(RENEW_ERROR_MESSAGE);
+	test('does not work for regular users', async () => {
+		await authMemberAgent
+			.post('/license/activate')
+			.send({ activationKey: 'abcde' })
+			.expect(403, { status: 'error', message: RESPONSE_ERROR_MESSAGES.MISSING_SCOPE });
+	});
+
+	test('errors out properly', async () => {
+		License.prototype.activate = jest.fn().mockImplementation(() => {
+			throw new Error('some fake error');
+		});
+
+		await authOwnerAgent
+			.post('/license/activate')
+			.send({ activationKey: 'abcde' })
+			.expect(400, { code: 400, message: `${ACTIVATION_FAILED_MESSAGE}: some fake error` });
+	});
+});
+
+describe('POST /license/renew', () => {
+	test('should work for instance owner', async () => {
+		// No license defined so we just expect the result to be the defaults
+		await authOwnerAgent.post('/license/renew').expect(200, DEFAULT_POST_RESPONSE);
+	});
+
+	test('does not work for regular users', async () => {
+		await authMemberAgent
+			.post('/license/renew')
+			.expect(403, { status: 'error', message: RESPONSE_ERROR_MESSAGES.MISSING_SCOPE });
+	});
+
+	test('errors out properly', async () => {
+		License.prototype.renew = jest.fn().mockImplementation(() => {
+			throw new Error(GENERIC_ERROR_MESSAGE);
+		});
+
+		await authOwnerAgent
+			.post('/license/renew')
+			.expect(400, { code: 400, message: `Failed to renew license: ${GENERIC_ERROR_MESSAGE}` });
+	});
 });
 
 const DEFAULT_LICENSE_RESPONSE: { data: ILicenseReadResponse } = {
 	data: {
 		usage: {
-			executions: {
+			activeWorkflowTriggers: {
 				value: 0,
 				limit: -1,
 				warningThreshold: 0.8,
@@ -161,7 +132,7 @@ const DEFAULT_LICENSE_RESPONSE: { data: ILicenseReadResponse } = {
 const DEFAULT_POST_RESPONSE: { data: ILicensePostResponse } = {
 	data: {
 		usage: {
-			executions: {
+			activeWorkflowTriggers: {
 				value: 0,
 				limit: -1,
 				warningThreshold: 0.8,
@@ -175,6 +146,5 @@ const DEFAULT_POST_RESPONSE: { data: ILicensePostResponse } = {
 	},
 };
 
-const NON_OWNER_ACTIVATE_RENEW_MESSAGE = 'Only an instance owner may activate or renew a license';
-const INVALID_ACIVATION_KEY_MESSAGE = 'Invalid activation key';
-const RENEW_ERROR_MESSAGE = 'Something went wrong when trying to renew license';
+const ACTIVATION_FAILED_MESSAGE = 'Failed to activate license';
+const GENERIC_ERROR_MESSAGE = 'Something went wrong';

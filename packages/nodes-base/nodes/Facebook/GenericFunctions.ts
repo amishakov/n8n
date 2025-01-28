@@ -1,25 +1,19 @@
-import { OptionsWithUri } from 'request';
-
-import {
-	IExecuteFunctions,
-	IExecuteSingleFunctions,
-	IHookFunctions,
-	ILoadOptionsFunctions,
-	IWebhookFunctions,
-} from 'n8n-core';
-
-import { IDataObject, NodeApiError } from 'n8n-workflow';
-
 import { capitalCase } from 'change-case';
+import type {
+	IDataObject,
+	IExecuteFunctions,
+	IHookFunctions,
+	IHttpRequestMethods,
+	ILoadOptionsFunctions,
+	IRequestOptions,
+	IWebhookFunctions,
+	JsonObject,
+} from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
 
 export async function facebookApiRequest(
-	this:
-		| IHookFunctions
-		| IExecuteFunctions
-		| IExecuteSingleFunctions
-		| ILoadOptionsFunctions
-		| IWebhookFunctions,
-	method: string,
+	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions | IWebhookFunctions,
+	method: IHttpRequestMethods,
 	resource: string,
 
 	body: any = {},
@@ -37,7 +31,7 @@ export async function facebookApiRequest(
 
 	qs.access_token = credentials.accessToken;
 
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		headers: {
 			accept: 'application/json,text/*;q=0.99',
 		},
@@ -45,14 +39,14 @@ export async function facebookApiRequest(
 		qs,
 		body,
 		gzip: true,
-		uri: uri ?? `https://graph.facebook.com/v8.0${resource}`,
+		uri: uri || `https://graph.facebook.com/v8.0${resource}`,
 		json: true,
 	};
 
 	try {
 		return await this.helpers.request(options);
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 

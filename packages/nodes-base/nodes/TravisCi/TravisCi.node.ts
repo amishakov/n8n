@@ -1,9 +1,13 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import { IDataObject, INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
+import type {
+	IExecuteFunctions,
+	IDataObject,
+	INodeExecutionData,
+	INodeType,
+	INodeTypeDescription,
+} from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
 
 import { buildFields, buildOperations } from './BuildDescription';
-
 import { travisciApiRequest, travisciApiRequestAllItems } from './GenericFunctions';
 
 export class TravisCi implements INodeType {
@@ -19,8 +23,8 @@ export class TravisCi implements INodeType {
 		defaults: {
 			name: 'TravisCI',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'travisCiApi',
@@ -153,7 +157,7 @@ export class TravisCi implements INodeType {
 				}
 
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as IDataObject[]),
 					{ itemData: { item: i } },
 				);
 
@@ -170,6 +174,6 @@ export class TravisCi implements INodeType {
 				throw error;
 			}
 		}
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

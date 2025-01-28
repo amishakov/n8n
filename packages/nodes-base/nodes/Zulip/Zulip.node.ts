@@ -1,21 +1,22 @@
-import { IExecuteFunctions } from 'n8n-core';
-import {
+import { snakeCase } from 'change-case';
+import type {
 	IDataObject,
+	IExecuteFunctions,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
-	NodeOperationError,
 } from 'n8n-workflow';
+import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
+
 import { validateJSON, zulipApiRequest } from './GenericFunctions';
 import { messageFields, messageOperations } from './MessageDescription';
-import { IMessage } from './MessageInterface';
-import { snakeCase } from 'change-case';
+import type { IMessage } from './MessageInterface';
 import { streamFields, streamOperations } from './StreamDescription';
+import type { IPrincipal, IStream } from './StreamInterface';
 import { userFields, userOperations } from './UserDescription';
-import { IPrincipal, IStream } from './StreamInterface';
-import { IUser } from './UserInterface';
+import type { IUser } from './UserInterface';
 
 export class Zulip implements INodeType {
 	description: INodeTypeDescription = {
@@ -29,8 +30,8 @@ export class Zulip implements INodeType {
 		defaults: {
 			name: 'Zulip',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'zulipApi',
@@ -75,7 +76,7 @@ export class Zulip implements INodeType {
 
 	methods = {
 		loadOptions: {
-			// Get all the available streams to display them to user so that he can
+			// Get all the available streams to display them to user so that they can
 			// select them easily
 			async getStreams(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -90,7 +91,7 @@ export class Zulip implements INodeType {
 				}
 				return returnData;
 			},
-			// Get all the available topics to display them to user so that he can
+			// Get all the available topics to display them to user so that they can
 			// select them easily
 			async getTopics(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const streamId = this.getCurrentNodeParameter('stream') as string;
@@ -106,7 +107,7 @@ export class Zulip implements INodeType {
 				}
 				return returnData;
 			},
-			// Get all the available users to display them to user so that he can
+			// Get all the available users to display them to user so that they can
 			// select them easily
 			async getUsers(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -126,7 +127,7 @@ export class Zulip implements INodeType {
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
-		const returnData: IDataObject[] = [];
+		const returnData: INodeExecutionData[] = [];
 		const length = items.length;
 		let responseData;
 		const resource = this.getNodeParameter('resource', 0);
@@ -167,7 +168,7 @@ export class Zulip implements INodeType {
 							body.content = updateFields.content as string;
 						}
 						if (updateFields.propagateMode) {
-							body.propagat_mode = snakeCase(updateFields.propagateMode as string);
+							body.propagate_mode = snakeCase(updateFields.propagateMode as string);
 						}
 						if (updateFields.topic) {
 							body.topic = updateFields.topic as string;
@@ -192,29 +193,16 @@ export class Zulip implements INodeType {
 					//https://zulipchat.com/api/upload-file
 					if (operation === 'updateFile') {
 						const credentials = await this.getCredentials('zulipApi');
-						const binaryProperty = this.getNodeParameter('dataBinaryProperty', i);
-						if (items[i].binary === undefined) {
-							throw new NodeOperationError(this.getNode(), 'No binary data exists on item!');
-						}
-						//@ts-ignore
-						if (items[i].binary[binaryProperty] === undefined) {
-							throw new NodeOperationError(
-								this.getNode(),
-								`No binary data property "${binaryProperty}" does not exists on item!`,
-								{ itemIndex: i },
-							);
-						}
+						const dataBinaryProperty = this.getNodeParameter('dataBinaryProperty', i);
 
-						const binaryDataBuffer = await this.helpers.getBinaryDataBuffer(i, binaryProperty);
+						const binaryData = this.helpers.assertBinaryData(i, dataBinaryProperty);
+						const binaryDataBuffer = await this.helpers.getBinaryDataBuffer(i, dataBinaryProperty);
 						const formData = {
 							file: {
-								//@ts-ignore
 								value: binaryDataBuffer,
 								options: {
-									//@ts-ignore
-									filename: items[i].binary[binaryProperty].fileName,
-									//@ts-ignore
-									contentType: items[i].binary[binaryProperty].mimeType,
+									filename: binaryData.fileName,
+									contentType: binaryData.mimeType,
 								},
 							},
 						};
@@ -464,20 +452,23 @@ export class Zulip implements INodeType {
 						responseData = await zulipApiRequest.call(this, 'DELETE', `/users/${userId}`, body);
 					}
 				}
-
-				if (Array.isArray(responseData)) {
-					returnData.push.apply(returnData, responseData as IDataObject[]);
-				} else {
-					returnData.push(responseData as IDataObject);
-				}
+				const executionData = this.helpers.constructExecutionMetaData(
+					this.helpers.returnJsonArray(responseData as IDataObject[]),
+					{ itemData: { item: i } },
+				);
+				returnData.push(...executionData);
 			} catch (error) {
 				if (this.continueOnFail()) {
-					returnData.push({ error: error.message });
+					const executionData = this.helpers.constructExecutionMetaData(
+						this.helpers.returnJsonArray({ error: error.message }),
+						{ itemData: { item: i } },
+					);
+					returnData.push(...executionData);
 					continue;
 				}
 				throw error;
 			}
 		}
-		return [this.helpers.returnJsonArray(returnData)];
+		return [returnData];
 	}
 }

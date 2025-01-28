@@ -1,48 +1,46 @@
-import { OptionsWithUri } from 'request';
-
-import { IExecuteFunctions, IExecuteSingleFunctions, ILoadOptionsFunctions } from 'n8n-core';
-
-import {
+import jwt from 'jsonwebtoken';
+import moment from 'moment-timezone';
+import type {
+	IExecuteFunctions,
+	ILoadOptionsFunctions,
 	IDataObject,
 	INodePropertyOptions,
-	LoggerProxy as Logger,
-	NodeApiError,
+	JsonObject,
+	IHttpRequestMethods,
+	IRequestOptions,
+	IPollFunctions,
 } from 'n8n-workflow';
-
-import moment from 'moment-timezone';
-
-import jwt from 'jsonwebtoken';
+import { NodeApiError } from 'n8n-workflow';
 
 function getOptions(
-	this: IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions,
-	method: string,
+	this: IExecuteFunctions | ILoadOptionsFunctions | IPollFunctions,
+	method: IHttpRequestMethods,
 	endpoint: string,
 
 	body: any,
 	qs: IDataObject,
 	instanceUrl: string,
-): OptionsWithUri {
-	const options: OptionsWithUri = {
+): IRequestOptions {
+	const options: IRequestOptions = {
 		headers: {
 			'Content-Type': 'application/json',
 		},
 		method,
 		body,
 		qs,
-		uri: `${instanceUrl}/services/data/v39.0${endpoint}`,
+		uri: `${instanceUrl}/services/data/v59.0${endpoint}`,
 		json: true,
 	};
 
-	if (!Object.keys(options.body).length) {
+	if (!Object.keys(options.body as IDataObject).length) {
 		delete options.body;
 	}
 
-	//@ts-ignore
 	return options;
 }
 
 async function getAccessToken(
-	this: IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions,
+	this: IExecuteFunctions | ILoadOptionsFunctions | IPollFunctions,
 	credentials: IDataObject,
 ): Promise<IDataObject> {
 	const now = moment().unix();
@@ -67,7 +65,7 @@ async function getAccessToken(
 		},
 	);
 
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		headers: {
 			'Content-Type': 'application/x-www-form-urlencoded',
 		},
@@ -80,12 +78,12 @@ async function getAccessToken(
 		json: true,
 	};
 
-	return this.helpers.request(options);
+	return await this.helpers.request(options);
 }
 
 export async function salesforceApiRequest(
-	this: IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions,
-	method: string,
+	this: IExecuteFunctions | ILoadOptionsFunctions | IPollFunctions,
+	method: IHttpRequestMethods,
 	endpoint: string,
 
 	body: any = {},
@@ -104,48 +102,47 @@ export async function salesforceApiRequest(
 			const options = getOptions.call(
 				this,
 				method,
-				uri ?? endpoint,
+				uri || endpoint,
 				body,
 				qs,
 				instance_url as string,
 			);
-			Logger.debug(
+			this.logger.debug(
 				`Authentication for "Salesforce" node is using "jwt". Invoking URI ${options.uri}`,
 			);
 			options.headers!.Authorization = `Bearer ${access_token}`;
 			Object.assign(options, option);
-			//@ts-ignore
 			return await this.helpers.request(options);
 		} else {
 			// https://help.salesforce.com/articleView?id=remoteaccess_oauth_web_server_flow.htm&type=5
 			const credentialsType = 'salesforceOAuth2Api';
-			const credentials = (await this.getCredentials(credentialsType)) as {
+			const credentials = await this.getCredentials<{
 				oauthTokenData: { instance_url: string };
-			};
+			}>(credentialsType);
 			const options = getOptions.call(
 				this,
 				method,
-				uri ?? endpoint,
+				uri || endpoint,
 				body,
 				qs,
 				credentials.oauthTokenData.instance_url,
 			);
-			Logger.debug(
+			this.logger.debug(
 				`Authentication for "Salesforce" node is using "OAuth2". Invoking URI ${options.uri}`,
 			);
 			Object.assign(options, option);
-			//@ts-ignore
+
 			return await this.helpers.requestOAuth2.call(this, credentialsType, options);
 		}
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
 export async function salesforceApiRequestAllItems(
-	this: IExecuteFunctions | ILoadOptionsFunctions,
+	this: IExecuteFunctions | ILoadOptionsFunctions | IPollFunctions,
 	propertyName: string,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 
 	body: any = {},
@@ -159,7 +156,7 @@ export async function salesforceApiRequestAllItems(
 	do {
 		responseData = await salesforceApiRequest.call(this, method, endpoint, body, query, uri);
 		uri = `${endpoint}/${responseData.nextRecordsUrl?.split('/')?.pop()}`;
-		returnData.push.apply(returnData, responseData[propertyName]);
+		returnData.push.apply(returnData, responseData[propertyName] as IDataObject[]);
 	} while (responseData.nextRecordsUrl !== undefined && responseData.nextRecordsUrl !== null);
 
 	return returnData;
@@ -182,7 +179,7 @@ export function sortOptions(options: INodePropertyOptions[]): void {
 }
 
 export function getValue(value: any) {
-	if (moment(value).isValid()) {
+	if (moment(value as string).isValid()) {
 		return value;
 	} else if (typeof value === 'string') {
 		return `'${value}'`;

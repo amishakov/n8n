@@ -1,31 +1,28 @@
-import { OptionsWithUrl } from 'request';
-
-import {
+import { createHmac } from 'crypto';
+import type {
+	IDataObject,
 	IExecuteFunctions,
-	IExecuteSingleFunctions,
 	IHookFunctions,
 	ILoadOptionsFunctions,
-} from 'n8n-core';
-
-import { IDataObject, NodeApiError } from 'n8n-workflow';
-
-import { createHmac } from 'crypto';
-
+	JsonObject,
+	IRequestOptions,
+	IHttpRequestMethods,
+} from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
 import qs from 'qs';
 
 export async function unleashedApiRequest(
-	this: IHookFunctions | IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions,
-	method: string,
+	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
+	method: IHttpRequestMethods,
 	path: string,
-
-	body: any = {},
+	body: IDataObject = {},
 	query: IDataObject = {},
 	pageNumber?: number,
 	headers?: object,
-): Promise<any> {
+) {
 	const paginatedPath = pageNumber ? `/${path}/${pageNumber}` : `/${path}`;
 
-	const options: OptionsWithUrl = {
+	const options: IRequestOptions = {
 		headers: {
 			Accept: 'application/json',
 			'Content-Type': 'application/json',
@@ -55,19 +52,18 @@ export async function unleashedApiRequest(
 	try {
 		return await this.helpers.request(options);
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
 export async function unleashedApiRequestAllItems(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
 	propertyName: string,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
-
-	body: any = {},
+	body: IDataObject = {},
 	query: IDataObject = {},
-): Promise<any> {
+) {
 	const returnData: IDataObject[] = [];
 	let responseData;
 	let pageNumber = 1;
@@ -76,7 +72,7 @@ export async function unleashedApiRequestAllItems(
 
 	do {
 		responseData = await unleashedApiRequest.call(this, method, endpoint, body, query, pageNumber);
-		returnData.push.apply(returnData, responseData[propertyName]);
+		returnData.push.apply(returnData, responseData[propertyName] as IDataObject[]);
 		pageNumber++;
 	} while (
 		(responseData.Pagination.PageNumber as number) <
@@ -100,7 +96,7 @@ export function convertNETDates(item: { [key: string]: any }) {
 			}
 		}
 		if (type === 'object' && item[path]) {
-			convertNETDates(item[path]);
+			convertNETDates(item[path] as IDataObject);
 		}
 	});
 }

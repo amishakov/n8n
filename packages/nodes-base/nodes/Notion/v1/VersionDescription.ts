@@ -1,29 +1,28 @@
 /* eslint-disable n8n-nodes-base/node-filename-against-convention */
-import { databaseFields, databaseOperations } from '../DatabaseDescription';
+import { NodeConnectionType, type INodeTypeDescription } from 'n8n-workflow';
 
-import { userFields, userOperations } from '../UserDescription';
-
-import { pageFields, pageOperations } from '../PageDescription';
-
-import { blockFields, blockOperations } from '../BlockDescription';
-
-import { databasePageFields, databasePageOperations } from '../DatabasePageDescription';
-
-import { INodeTypeDescription } from 'n8n-workflow';
+import { blockFields, blockOperations } from '../shared/descriptions/BlockDescription';
+import { databaseFields, databaseOperations } from '../shared/descriptions/DatabaseDescription';
+import {
+	databasePageFields,
+	databasePageOperations,
+} from '../shared/descriptions/DatabasePageDescription';
+import { pageFields, pageOperations } from '../shared/descriptions/PageDescription';
+import { userFields, userOperations } from '../shared/descriptions/UserDescription';
 
 export const versionDescription: INodeTypeDescription = {
-	displayName: 'Notion (Beta)',
+	displayName: 'Notion',
 	name: 'notion',
 	icon: 'file:notion.svg',
 	group: ['output'],
 	version: 1,
 	subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
-	description: 'Consume Notion API (Beta)',
+	description: 'Consume Notion API',
 	defaults: {
-		name: 'Notion (Beta)',
+		name: 'Notion',
 	},
-	inputs: ['main'],
-	outputs: ['main'],
+	inputs: [NodeConnectionType.Main],
+	outputs: [NodeConnectionType.Main],
 	credentials: [
 		{
 			name: 'notionApi',
@@ -67,16 +66,11 @@ export const versionDescription: INodeTypeDescription = {
 		// 	description: 'The resource to operate on.',
 		// },
 		{
-			displayName: "To access content, make sure it's shared with your integration in Notion",
+			displayName:
+				'In Notion, make sure to <a href="https://www.notion.so/help/add-and-manage-connections-with-the-api" target="_blank">add your connection</a> to the pages you want to access.',
 			name: 'notionNotice',
 			type: 'notice',
 			default: '',
-		},
-		{
-			displayName: 'Version',
-			name: 'version',
-			type: 'hidden',
-			default: 1,
 		},
 		{
 			displayName: 'Resource',

@@ -1,15 +1,14 @@
-import { OptionsWithUri } from 'request';
-
-import {
-	BINARY_ENCODING,
+import type {
+	JsonObject,
+	IDataObject,
 	IExecuteFunctions,
-	IExecuteSingleFunctions,
 	IHookFunctions,
 	ILoadOptionsFunctions,
 	IWebhookFunctions,
-} from 'n8n-core';
-
-import { IDataObject, NodeApiError, NodeOperationError } from 'n8n-workflow';
+	IHttpRequestMethods,
+	IRequestOptions,
+} from 'n8n-workflow';
+import { BINARY_ENCODING, NodeApiError, NodeOperationError } from 'n8n-workflow';
 
 function getEnvironment(env: string) {
 	return {
@@ -19,12 +18,7 @@ function getEnvironment(env: string) {
 }
 
 async function getAccessToken(
-	this:
-		| IHookFunctions
-		| IExecuteFunctions
-		| IExecuteSingleFunctions
-		| ILoadOptionsFunctions
-		| IWebhookFunctions,
+	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions | IWebhookFunctions,
 ): Promise<any> {
 	const credentials = await this.getCredentials('payPalApi');
 	const env = getEnvironment(credentials.env as string);
@@ -35,7 +29,7 @@ async function getAccessToken(
 		{},
 		{ Authorization: `Basic ${data}`, 'Content-Type': 'application/x-www-form-urlencoded' },
 	);
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		headers: headerWithAuthentication,
 		method: 'POST',
 		form: {
@@ -47,19 +41,14 @@ async function getAccessToken(
 	try {
 		return await this.helpers.request(options);
 	} catch (error) {
-		throw new NodeOperationError(this.getNode(), error);
+		throw new NodeOperationError(this.getNode(), error as Error);
 	}
 }
 
 export async function payPalApiRequest(
-	this:
-		| IHookFunctions
-		| IExecuteFunctions
-		| IExecuteSingleFunctions
-		| ILoadOptionsFunctions
-		| IWebhookFunctions,
+	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions | IWebhookFunctions,
 	endpoint: string,
-	method: string,
+	method: IHttpRequestMethods,
 
 	body: any = {},
 	query?: IDataObject,
@@ -75,15 +64,15 @@ export async function payPalApiRequest(
 	const options = {
 		headers: headerWithAuthentication,
 		method,
-		qs: query ?? {},
-		uri: uri ?? `${env}/v1${endpoint}`,
+		qs: query || {},
+		uri: uri || `${env}/v1${endpoint}`,
 		body,
 		json: true,
 	};
 	try {
 		return await this.helpers.request(options);
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
@@ -101,10 +90,10 @@ function getNext(links: IDataObject[]): string | undefined {
  * and return all results
  */
 export async function payPalApiRequestAllItems(
-	this: IHookFunctions | IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions,
+	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
 	propertyName: string,
 	endpoint: string,
-	method: string,
+	method: IHttpRequestMethods,
 
 	body: any = {},
 	query?: IDataObject,
@@ -118,9 +107,9 @@ export async function payPalApiRequestAllItems(
 
 	do {
 		responseData = await payPalApiRequest.call(this, endpoint, method, body, query, uri);
-		uri = getNext(responseData.links);
-		returnData.push.apply(returnData, responseData[propertyName]);
-	} while (getNext(responseData.links) !== undefined);
+		uri = getNext(responseData.links as IDataObject[]);
+		returnData.push.apply(returnData, responseData[propertyName] as IDataObject[]);
+	} while (getNext(responseData.links as IDataObject[]) !== undefined);
 
 	return returnData;
 }

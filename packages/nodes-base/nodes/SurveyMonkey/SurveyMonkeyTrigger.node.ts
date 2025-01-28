@@ -1,7 +1,7 @@
-import { IHookFunctions, IWebhookFunctions } from 'n8n-core';
-
-import {
-	deepCopy,
+import { createHmac } from 'crypto';
+import type {
+	IHookFunctions,
+	IWebhookFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
@@ -9,15 +9,11 @@ import {
 	INodeType,
 	INodeTypeDescription,
 	IWebhookResponseData,
-	jsonParse,
-	NodeOperationError,
 } from 'n8n-workflow';
+import { deepCopy, jsonParse, NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
 import { idsExist, surveyMonkeyApiRequest, surveyMonkeyRequestAllItems } from './GenericFunctions';
-
-import { IAnswer, IChoice, IOther, IQuestion, IRow } from './Interfaces';
-
-import { createHmac } from 'crypto';
+import type { IAnswer, IChoice, IOther, IQuestion, IRow } from './Interfaces';
 
 export class SurveyMonkeyTrigger implements INodeType {
 	description: INodeTypeDescription = {
@@ -31,7 +27,7 @@ export class SurveyMonkeyTrigger implements INodeType {
 			name: 'SurveyMonkey Trigger',
 		},
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'surveyMonkeyApi',
@@ -233,7 +229,7 @@ export class SurveyMonkeyTrigger implements INodeType {
 				name: 'surveyIds',
 				type: 'multiOptions',
 				description:
-					'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>',
+					'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 				displayOptions: {
 					show: {
 						objectType: ['survey'],
@@ -254,7 +250,7 @@ export class SurveyMonkeyTrigger implements INodeType {
 				name: 'surveyId',
 				type: 'options',
 				description:
-					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>',
+					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 				displayOptions: {
 					show: {
 						objectType: ['collector'],
@@ -271,7 +267,7 @@ export class SurveyMonkeyTrigger implements INodeType {
 				name: 'collectorIds',
 				type: 'multiOptions',
 				description:
-					'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>',
+					'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 				displayOptions: {
 					show: {
 						objectType: ['collector'],
@@ -317,7 +313,7 @@ export class SurveyMonkeyTrigger implements INodeType {
 
 	methods = {
 		loadOptions: {
-			// Get all the survey's collectors to display them to user so that he can
+			// Get all the survey's collectors to display them to user so that they can
 			// select them easily
 			async getCollectors(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const surveyId = this.getCurrentNodeParameter('surveyId');
@@ -339,7 +335,7 @@ export class SurveyMonkeyTrigger implements INodeType {
 				return returnData;
 			},
 
-			// Get all the surveys to display them to user so that he can
+			// Get all the surveys to display them to user so that they can
 			// select them easily
 			async getSurveys(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -357,7 +353,6 @@ export class SurveyMonkeyTrigger implements INodeType {
 		},
 	};
 
-	// @ts-ignore (because of request)
 	webhookMethods = {
 		default: {
 			async checkExists(this: IHookFunctions): Promise<boolean> {
@@ -462,7 +457,7 @@ export class SurveyMonkeyTrigger implements INodeType {
 					}
 
 					// Remove from the static workflow data so that it is clear
-					// that no webhooks are registred anymore
+					// that no webhooks are registered anymore
 					delete webhookData.webhookId;
 				}
 
@@ -495,11 +490,11 @@ export class SurveyMonkeyTrigger implements INodeType {
 			return {};
 		}
 
-		return new Promise((resolve, _reject) => {
+		return await new Promise((resolve, _reject) => {
 			const data: Buffer[] = [];
 
 			req.on('data', (chunk) => {
-				data.push(chunk);
+				data.push(chunk as Buffer);
 			});
 
 			req.on('end', async () => {
@@ -544,7 +539,7 @@ export class SurveyMonkeyTrigger implements INodeType {
 						);
 
 						for (const page of pages) {
-							questions.push.apply(questions, page.questions);
+							questions.push.apply(questions, page.questions as IQuestion[]);
 						}
 
 						for (const page of responseData.pages as IDataObject[]) {
@@ -691,7 +686,7 @@ export class SurveyMonkeyTrigger implements INodeType {
 								}
 								const addressInfo: IDataObject = {};
 								for (const answer of question.answers.rows as IDataObject[]) {
-									addressInfo[answer.type as string] = rows[answer.id as string] ?? '';
+									addressInfo[answer.type as string] = rows[answer.id as string] || '';
 								}
 								responseQuestions.set(heading, addressInfo);
 							}

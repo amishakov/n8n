@@ -1,18 +1,20 @@
-import { get } from 'lodash';
-
-import {
+import get from 'lodash/get';
+import type {
+	IDataObject,
 	IExecuteFunctions,
 	IHookFunctions,
 	ILoadOptionsFunctions,
 	IWebhookFunctions,
-} from 'n8n-core';
-
-import { IDataObject, IHttpRequestOptions, jsonParse, NodeApiError } from 'n8n-workflow';
+	IHttpRequestOptions,
+	JsonObject,
+	IHttpRequestMethods,
+} from 'n8n-workflow';
+import { jsonParse, NodeApiError } from 'n8n-workflow';
 
 export async function awsApiRequest(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions | IWebhookFunctions,
 	service: string,
-	method: string,
+	method: IHttpRequestMethods,
 	path: string,
 	body?: string | Buffer,
 	query: IDataObject = {},
@@ -36,14 +38,14 @@ export async function awsApiRequest(
 	try {
 		return await this.helpers.requestWithAuthentication.call(this, 'aws', requestOptions);
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
 export async function awsApiRequestREST(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
 	service: string,
-	method: string,
+	method: IHttpRequestMethods,
 	path: string,
 	body?: string,
 	query: IDataObject = {},
@@ -51,7 +53,7 @@ export async function awsApiRequestREST(
 ): Promise<any> {
 	const response = await awsApiRequest.call(this, service, method, path, body, query, headers);
 	try {
-		return JSON.parse(response);
+		return JSON.parse(response as string);
 	} catch (e) {
 		return response;
 	}
@@ -61,7 +63,7 @@ export async function awsApiRequestAllItems(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
 	propertyName: string,
 	service: string,
-	method: string,
+	method: IHttpRequestMethods,
 	path: string,
 	body?: string,
 	query: IDataObject = {},
@@ -79,7 +81,7 @@ export async function awsApiRequestAllItems(
 			});
 			data.NextToken = responseData.NextToken;
 		}
-		returnData.push.apply(returnData, get(responseData, propertyName));
+		returnData.push.apply(returnData, get(responseData, propertyName) as IDataObject[]);
 	} while (responseData.NextToken !== undefined);
 
 	return returnData;

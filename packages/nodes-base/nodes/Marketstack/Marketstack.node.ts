@@ -1,12 +1,11 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
-	NodeOperationError,
 } from 'n8n-workflow';
+import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
 import {
 	endOfDayDataFields,
@@ -16,30 +15,28 @@ import {
 	tickerFields,
 	tickerOperations,
 } from './descriptions';
-
 import {
 	format,
 	marketstackApiRequest,
 	marketstackApiRequestAllItems,
 	validateTimeOptions,
 } from './GenericFunctions';
-
-import { EndOfDayDataFilters, Operation, Resource } from './types';
+import type { EndOfDayDataFilters, Operation, Resource } from './types';
 
 export class Marketstack implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Marketstack',
 		name: 'marketstack',
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
-		icon: 'file:marketstack.svg',
+		icon: { light: 'file:marketstack.svg', dark: 'file:marketstack.dark.svg' },
 		group: ['transform'],
 		version: 1,
 		description: 'Consume Marketstack API',
 		defaults: {
 			name: 'Marketstack',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'marketstackApi',
@@ -174,13 +171,13 @@ export class Marketstack implements INodeType {
 			}
 
 			const executionData = this.helpers.constructExecutionMetaData(
-				this.helpers.returnJsonArray(responseData),
+				this.helpers.returnJsonArray(responseData as IDataObject[]),
 				{ itemData: { item: i } },
 			);
 
 			returnData.push(...executionData);
 		}
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

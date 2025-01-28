@@ -1,4 +1,6 @@
-import { ICredentialType, INodeProperties } from 'n8n-workflow';
+import type { ICredentialType, INodeProperties } from 'n8n-workflow';
+
+import { sshTunnelProperties } from '@utils/sshTunnel.properties';
 
 export class MySql implements ICredentialType {
 	name = 'mySql';
@@ -97,5 +99,6 @@ export class MySql implements ICredentialType {
 			type: 'string',
 			default: '',
 		},
+		...sshTunnelProperties,
 	];
 }

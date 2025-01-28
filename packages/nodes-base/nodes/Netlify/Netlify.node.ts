@@ -1,6 +1,5 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
@@ -8,11 +7,10 @@ import {
 	INodeType,
 	INodeTypeDescription,
 } from 'n8n-workflow';
-
-import { netlifyApiRequest, netlifyRequestAllItems } from './GenericFunctions';
+import { NodeConnectionType } from 'n8n-workflow';
 
 import { deployFields, deployOperations } from './DeployDescription';
-
+import { netlifyApiRequest, netlifyRequestAllItems } from './GenericFunctions';
 import { siteFields, siteOperations } from './SiteDescription';
 
 export class Netlify implements INodeType {
@@ -27,8 +25,8 @@ export class Netlify implements INodeType {
 		defaults: {
 			name: 'Netlify',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'netlifyApi',
@@ -189,7 +187,7 @@ export class Netlify implements INodeType {
 				}
 
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as IDataObject),
 					{ itemData: { item: i } },
 				);
 
@@ -207,6 +205,6 @@ export class Netlify implements INodeType {
 			}
 		}
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

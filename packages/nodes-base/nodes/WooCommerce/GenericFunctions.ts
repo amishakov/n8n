@@ -1,31 +1,22 @@
-import { OptionsWithUri } from 'request';
-
-import {
+import { snakeCase } from 'change-case';
+import { createHash } from 'crypto';
+import omit from 'lodash/omit';
+import type {
+	ICredentialDataDecryptedObject,
+	IDataObject,
 	IExecuteFunctions,
-	IExecuteSingleFunctions,
 	IHookFunctions,
 	ILoadOptionsFunctions,
 	IWebhookFunctions,
-} from 'n8n-core';
+	IHttpRequestMethods,
+	IRequestOptions,
+} from 'n8n-workflow';
 
-import { ICredentialDataDecryptedObject, IDataObject } from 'n8n-workflow';
-
-import { ICouponLine, IFeeLine, ILineItem, IShoppingLine } from './OrderInterface';
-
-import { createHash } from 'crypto';
-
-import { snakeCase } from 'change-case';
-
-import { omit } from 'lodash';
+import type { ICouponLine, IFeeLine, ILineItem, IShoppingLine } from './OrderInterface';
 
 export async function woocommerceApiRequest(
-	this:
-		| IHookFunctions
-		| IExecuteFunctions
-		| IExecuteSingleFunctions
-		| ILoadOptionsFunctions
-		| IWebhookFunctions,
-	method: string,
+	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions | IWebhookFunctions,
+	method: IHttpRequestMethods,
 	resource: string,
 
 	body: any = {},
@@ -35,24 +26,24 @@ export async function woocommerceApiRequest(
 ): Promise<any> {
 	const credentials = await this.getCredentials('wooCommerceApi');
 
-	let options: OptionsWithUri = {
+	let options: IRequestOptions = {
 		method,
 		qs,
 		body,
-		uri: uri ?? `${credentials.url}/wp-json/wc/v3${resource}`,
+		uri: uri || `${credentials.url}/wp-json/wc/v3${resource}`,
 		json: true,
 	};
 
-	if (!Object.keys(body).length) {
+	if (!Object.keys(body as IDataObject).length) {
 		delete options.form;
 	}
 	options = Object.assign({}, options, option);
-	return this.helpers.requestWithAuthentication.call(this, 'wooCommerceApi', options);
+	return await this.helpers.requestWithAuthentication.call(this, 'wooCommerceApi', options);
 }
 
 export async function woocommerceApiRequestAllItems(
 	this: IExecuteFunctions | ILoadOptionsFunctions | IHookFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 
 	body: any = {},
@@ -72,7 +63,7 @@ export async function woocommerceApiRequestAllItems(
 		if (nextLink) {
 			uri = nextLink.split(';')[0].replace(/<(.*)>/, '$1');
 		}
-		returnData.push.apply(returnData, responseData.body);
+		returnData.push.apply(returnData, responseData.body as IDataObject[]);
 	} while (responseData.headers.link?.includes('rel="next"'));
 
 	return returnData;
@@ -87,9 +78,7 @@ export function getAutomaticSecret(credentials: ICredentialDataDecryptedObject) 
 	return createHash('md5').update(data).digest('hex');
 }
 
-export function setMetadata(
-	data: IShoppingLine[] | IShoppingLine[] | IFeeLine[] | ILineItem[] | ICouponLine[],
-) {
+export function setMetadata(data: IShoppingLine[] | IFeeLine[] | ILineItem[] | ICouponLine[]) {
 	for (let i = 0; i < data.length; i++) {
 		//@ts-ignore\
 		if (data[i].metadataUi?.metadataValues) {
@@ -105,7 +94,7 @@ export function setMetadata(
 }
 
 export function toSnakeCase(
-	data: IShoppingLine[] | IShoppingLine[] | IFeeLine[] | ILineItem[] | ICouponLine[] | IDataObject,
+	data: IShoppingLine[] | IFeeLine[] | ILineItem[] | ICouponLine[] | IDataObject,
 ) {
 	if (!Array.isArray(data)) {
 		data = [data];

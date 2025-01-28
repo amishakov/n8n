@@ -1,6 +1,11 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import { IDataObject, INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
+import type {
+	IExecuteFunctions,
+	IDataObject,
+	INodeExecutionData,
+	INodeType,
+	INodeTypeDescription,
+} from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
 
 import { openThesaurusApiRequest } from './GenericFunctions';
 
@@ -17,8 +22,8 @@ export class OpenThesaurus implements INodeType {
 		defaults: {
 			name: 'OpenThesaurus',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		properties: [
 			{
 				displayName: 'Operation',
@@ -52,7 +57,7 @@ export class OpenThesaurus implements INodeType {
 				displayName: 'Options',
 				name: 'options',
 				type: 'collection',
-				placeholder: 'Add Options',
+				placeholder: 'Add option',
 				displayOptions: {
 					show: {
 						operation: ['getSynonyms'],
@@ -162,7 +167,7 @@ export class OpenThesaurus implements INodeType {
 				}
 
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as IDataObject[]),
 					{ itemData: { item: i } },
 				);
 
@@ -179,6 +184,6 @@ export class OpenThesaurus implements INodeType {
 				throw error;
 			}
 		}
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

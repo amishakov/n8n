@@ -1,17 +1,21 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import { IDataObject, INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
-
-import { pipelineFields, pipelineOperations } from './PipelineDescription';
+import type {
+	IExecuteFunctions,
+	IDataObject,
+	INodeExecutionData,
+	INodeType,
+	INodeTypeDescription,
+} from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
 
 import { circleciApiRequest, circleciApiRequestAllItems } from './GenericFunctions';
+import { pipelineFields, pipelineOperations } from './PipelineDescription';
 
 export class CircleCi implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'CircleCI',
 		name: 'circleCi',
-		// eslint-disable-next-line n8n-nodes-base/node-class-description-icon-not-svg
-		icon: 'file:circleCi.png',
+
+		icon: { light: 'file:circleCi.svg', dark: 'file:circleCi.dark.svg' },
 		group: ['output'],
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
@@ -19,8 +23,8 @@ export class CircleCi implements INodeType {
 		defaults: {
 			name: 'CircleCI',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'circleCiApi',
@@ -69,7 +73,7 @@ export class CircleCi implements INodeType {
 
 						responseData = await circleciApiRequest.call(this, 'GET', endpoint, {}, qs);
 						responseData = this.helpers.constructExecutionMetaData(
-							this.helpers.returnJsonArray(responseData),
+							this.helpers.returnJsonArray(responseData as IDataObject[]),
 							{ itemData: { item: i } },
 						);
 					}
@@ -103,7 +107,7 @@ export class CircleCi implements INodeType {
 							responseData = responseData.splice(0, qs.limit);
 						}
 						responseData = this.helpers.constructExecutionMetaData(
-							this.helpers.returnJsonArray(responseData),
+							this.helpers.returnJsonArray(responseData as IDataObject[]),
 							{ itemData: { item: i } },
 						);
 					}
@@ -130,13 +134,13 @@ export class CircleCi implements INodeType {
 
 						responseData = await circleciApiRequest.call(this, 'POST', endpoint, body, qs);
 						responseData = this.helpers.constructExecutionMetaData(
-							this.helpers.returnJsonArray(responseData),
+							this.helpers.returnJsonArray(responseData as IDataObject[]),
 							{ itemData: { item: i } },
 						);
 					}
 				}
 
-				returnData.push(...responseData);
+				returnData.push(...(responseData as INodeExecutionData[]));
 			} catch (error) {
 				if (this.continueOnFail()) {
 					returnData.push({ error: error.message, json: {}, itemIndex: i });
@@ -145,6 +149,6 @@ export class CircleCi implements INodeType {
 				throw error;
 			}
 		}
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

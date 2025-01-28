@@ -1,4 +1,4 @@
-import { ICredentialType, INodeProperties } from 'n8n-workflow';
+import type { ICredentialType, INodeProperties } from 'n8n-workflow';
 
 export class Redis implements ICredentialType {
 	name = 'redis';
@@ -18,6 +18,13 @@ export class Redis implements ICredentialType {
 			default: '',
 		},
 		{
+			displayName: 'User',
+			name: 'user',
+			type: 'string',
+			default: '',
+			hint: 'Leave blank for password-only auth',
+		},
+		{
 			displayName: 'Host',
 			name: 'host',
 			type: 'string',
@@ -34,6 +41,12 @@ export class Redis implements ICredentialType {
 			name: 'database',
 			type: 'number',
 			default: 0,
+		},
+		{
+			displayName: 'SSL',
+			name: 'ssl',
+			type: 'boolean',
+			default: false,
 		},
 	];
 }

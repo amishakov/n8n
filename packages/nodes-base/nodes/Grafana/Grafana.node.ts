@@ -1,16 +1,13 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
-	NodeApiError,
 } from 'n8n-workflow';
-
-import { deriveUid, grafanaApiRequest, throwOnEmptyUpdate } from './GenericFunctions';
+import { NodeConnectionType, NodeApiError } from 'n8n-workflow';
 
 import {
 	dashboardFields,
@@ -22,8 +19,8 @@ import {
 	userFields,
 	userOperations,
 } from './descriptions';
-
-import {
+import { deriveUid, grafanaApiRequest, throwOnEmptyUpdate } from './GenericFunctions';
+import type {
 	DashboardUpdateFields,
 	DashboardUpdatePayload,
 	LoadedDashboards,
@@ -44,8 +41,8 @@ export class Grafana implements INodeType {
 		defaults: {
 			name: 'Grafana',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'grafanaApi',
@@ -480,8 +477,8 @@ export class Grafana implements INodeType {
 				}
 
 				Array.isArray(responseData)
-					? returnData.push(...responseData)
-					: returnData.push(responseData);
+					? returnData.push(...(responseData as IDataObject[]))
+					: returnData.push(responseData as IDataObject);
 			} catch (error) {
 				if (this.continueOnFail()) {
 					returnData.push({ error: error.message });

@@ -1,11 +1,13 @@
-import { IHookFunctions, IWebhookFunctions } from 'n8n-core';
-
 import {
-	ILoadOptionsFunctions,
-	INodePropertyOptions,
-	INodeType,
-	INodeTypeDescription,
-	IWebhookResponseData,
+	type IDataObject,
+	type IHookFunctions,
+	type IWebhookFunctions,
+	type ILoadOptionsFunctions,
+	type INodePropertyOptions,
+	type INodeType,
+	type INodeTypeDescription,
+	type IWebhookResponseData,
+	NodeConnectionType,
 } from 'n8n-workflow';
 
 import { formIoApiRequest } from './GenericFunctions';
@@ -23,7 +25,7 @@ export class FormIoTrigger implements INodeType {
 			name: 'Form.io Trigger',
 		},
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'formIoApi',
@@ -49,7 +51,7 @@ export class FormIoTrigger implements INodeType {
 				required: true,
 				default: '',
 				description:
-					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>',
+					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 			},
 			{
 				displayName: 'Form Name or ID',
@@ -62,7 +64,7 @@ export class FormIoTrigger implements INodeType {
 				required: true,
 				default: '',
 				description:
-					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>',
+					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 			},
 			{
 				displayName: 'Trigger Events',
@@ -120,7 +122,6 @@ export class FormIoTrigger implements INodeType {
 		},
 	};
 
-	// @ts-ignore
 	webhookMethods = {
 		default: {
 			async checkExists(this: IHookFunctions): Promise<boolean> {
@@ -139,7 +140,7 @@ export class FormIoTrigger implements INodeType {
 						if (
 							action.settings.url === webhookUrl &&
 							action.method.length === method.length &&
-							action.method.every((value: any) => method.includes(value))
+							action.method.every((value: any) => method.includes(value as string))
 						) {
 							webhookData.webhookId = action._id;
 							return true;
@@ -205,7 +206,7 @@ export class FormIoTrigger implements INodeType {
 			response = response.data;
 		}
 		return {
-			workflowData: [this.helpers.returnJsonArray(response)],
+			workflowData: [this.helpers.returnJsonArray(response as IDataObject[])],
 		};
 	}
 }

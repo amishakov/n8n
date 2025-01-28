@@ -1,47 +1,32 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
-	NodeOperationError,
+	IHttpRequestMethods,
 } from 'n8n-workflow';
+import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
-import {
-	activeCampaignApiRequest,
-	activeCampaignApiRequestAllItems,
-	IProduct,
-} from './GenericFunctions';
-
+import { accountContactFields, accountContactOperations } from './AccountContactDescription';
+import { accountFields, accountOperations } from './AccountDescription';
+import { connectionFields, connectionOperations } from './ConnectionDescription';
 import { contactFields, contactOperations } from './ContactDescription';
-
+import { contactListFields, contactListOperations } from './ContactListDescription';
+import { contactTagFields, contactTagOperations } from './ContactTagDescription';
 import { dealFields, dealOperations } from './DealDescription';
-
-import { ecomOrderFields, ecomOrderOperations } from './EcomOrderDescription';
-
 import { ecomCustomerFields, ecomCustomerOperations } from './EcomCustomerDescription';
-
+import { ecomOrderFields, ecomOrderOperations } from './EcomOrderDescription';
 import {
 	ecomOrderProductsFields,
 	ecomOrderProductsOperations,
 } from './EcomOrderProductsDescription';
-
-import { connectionFields, connectionOperations } from './ConnectionDescription';
-
-import { accountFields, accountOperations } from './AccountDescription';
-
-import { tagFields, tagOperations } from './TagDescription';
-
-import { accountContactFields, accountContactOperations } from './AccountContactDescription';
-
-import { contactListFields, contactListOperations } from './ContactListDescription';
-
-import { contactTagFields, contactTagOperations } from './ContactTagDescription';
-
+import { activeCampaignApiRequest, activeCampaignApiRequestAllItems } from './GenericFunctions';
+import type { IProduct } from './GenericFunctions';
 import { listFields, listOperations } from './ListDescription';
+import { tagFields, tagOperations } from './TagDescription';
 
 interface CustomProperty {
 	name: string;
@@ -60,7 +45,7 @@ function addAdditionalFields(body: IDataObject, additionalFields: IDataObject) {
 			key === 'customProperties' &&
 			(additionalFields.customProperties as IDataObject).property !== undefined
 		) {
-			for (const customProperty of (additionalFields.customProperties as IDataObject)!
+			for (const customProperty of (additionalFields.customProperties as IDataObject)
 				.property! as CustomProperty[]) {
 				body[customProperty.name] = customProperty.value;
 			}
@@ -84,8 +69,7 @@ export class ActiveCampaign implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'ActiveCampaign',
 		name: 'activeCampaign',
-		// eslint-disable-next-line n8n-nodes-base/node-class-description-icon-not-svg
-		icon: 'file:activeCampaign.png',
+		icon: { light: 'file:activeCampaign.svg', dark: 'file:activeCampaign.dark.svg' },
 		group: ['transform'],
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
@@ -93,8 +77,8 @@ export class ActiveCampaign implements INodeType {
 		defaults: {
 			name: 'ActiveCampaign',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'activeCampaignApi',
@@ -243,7 +227,7 @@ export class ActiveCampaign implements INodeType {
 
 	methods = {
 		loadOptions: {
-			// Get all the available custom fields to display them to user so that he can
+			// Get all the available custom fields to display them to user so that they can
 			// select them easily
 			async getContactCustomFields(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -264,7 +248,7 @@ export class ActiveCampaign implements INodeType {
 				}
 				return returnData;
 			},
-			// Get all the available custom fields to display them to user so that he can
+			// Get all the available custom fields to display them to user so that they can
 			// select them easily
 			async getAccountCustomFields(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -285,17 +269,19 @@ export class ActiveCampaign implements INodeType {
 				}
 				return returnData;
 			},
-			// Get all the available tags to display them to user so that he can
+			// Get all the available tags to display them to user so that they can
 			// select them easily
 			async getTags(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
-				const { tags } = await activeCampaignApiRequest.call(
+				const tags = await activeCampaignApiRequestAllItems.call(
 					this,
 					'GET',
 					'/api/3/tags',
 					{},
 					{ limit: 100 },
+					'tags',
 				);
+
 				for (const tag of tags) {
 					returnData.push({
 						name: tag.tag,
@@ -319,7 +305,7 @@ export class ActiveCampaign implements INodeType {
 		// For Query string
 		let qs: IDataObject;
 
-		let requestMethod: string;
+		let requestMethod: IHttpRequestMethods;
 		let endpoint: string;
 		let returnAll = false;
 		let dataKey: string | undefined;
@@ -509,7 +495,7 @@ export class ActiveCampaign implements INodeType {
 				} else if (resource === 'accountContact') {
 					if (operation === 'create') {
 						// ----------------------------------
-						//         account:create
+						//         accountContact:create
 						// ----------------------------------
 
 						requestMethod = 'POST';
@@ -524,7 +510,7 @@ export class ActiveCampaign implements INodeType {
 						} as IDataObject;
 
 						const additionalFields = this.getNodeParameter('additionalFields', i);
-						addAdditionalFields(body.account as IDataObject, additionalFields);
+						addAdditionalFields(body.accountContact as IDataObject, additionalFields);
 					} else if (operation === 'update') {
 						// ----------------------------------
 						//         accountContact:update
@@ -1185,7 +1171,7 @@ export class ActiveCampaign implements INodeType {
 				}
 
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as IDataObject[]),
 					{ itemData: { item: i } },
 				);
 
@@ -1203,6 +1189,6 @@ export class ActiveCampaign implements INodeType {
 			}
 		}
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

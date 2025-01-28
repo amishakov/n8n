@@ -1,17 +1,17 @@
-import { IExecuteFunctions } from 'n8n-core';
-
 import {
-	ICredentialDataDecryptedObject,
-	ICredentialsDecrypted,
-	ICredentialTestFunctions,
-	IDataObject,
-	ILoadOptionsFunctions,
-	INodeCredentialTestResult,
-	INodeExecutionData,
-	INodePropertyOptions,
-	INodeType,
-	INodeTypeDescription,
-	JsonObject,
+	type IExecuteFunctions,
+	type ICredentialDataDecryptedObject,
+	type ICredentialsDecrypted,
+	type ICredentialTestFunctions,
+	type IDataObject,
+	type ILoadOptionsFunctions,
+	type INodeCredentialTestResult,
+	type INodeExecutionData,
+	type INodePropertyOptions,
+	type INodeType,
+	type INodeTypeDescription,
+	type JsonObject,
+	NodeConnectionType,
 } from 'n8n-workflow';
 
 import {
@@ -24,7 +24,6 @@ import {
 	userFields,
 	userOperations,
 } from './descriptions';
-
 import {
 	getAccessTokens,
 	haloPSAApiRequest,
@@ -47,8 +46,8 @@ export class HaloPSA implements INodeType {
 		defaults: {
 			name: 'HaloPSA',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'haloPSAApi',
@@ -278,7 +277,7 @@ export class HaloPSA implements INodeType {
 							tokens.access_token,
 						);
 						responseData = simplify
-							? simplifyHaloPSAGetOutput([response], simplifiedOutput)
+							? simplifyHaloPSAGetOutput([response] as IDataObject[], simplifiedOutput)
 							: response;
 					}
 
@@ -314,7 +313,7 @@ export class HaloPSA implements INodeType {
 							response = clients;
 						}
 						responseData = simplify
-							? simplifyHaloPSAGetOutput(response, simplifiedOutput)
+							? simplifyHaloPSAGetOutput(response as IDataObject[], simplifiedOutput)
 							: response;
 					}
 
@@ -385,7 +384,7 @@ export class HaloPSA implements INodeType {
 							tokens.access_token,
 						);
 						responseData = simplify
-							? simplifyHaloPSAGetOutput([response], simplifiedOutput)
+							? simplifyHaloPSAGetOutput([response] as IDataObject[], simplifiedOutput)
 							: response;
 					}
 
@@ -421,7 +420,7 @@ export class HaloPSA implements INodeType {
 							response = sites;
 						}
 						responseData = simplify
-							? simplifyHaloPSAGetOutput(response, simplifiedOutput)
+							? simplifyHaloPSAGetOutput(response as IDataObject[], simplifiedOutput)
 							: response;
 					}
 
@@ -494,7 +493,7 @@ export class HaloPSA implements INodeType {
 							tokens.access_token,
 						);
 						responseData = simplify
-							? simplifyHaloPSAGetOutput([response], simplifiedOutput)
+							? simplifyHaloPSAGetOutput([response] as IDataObject[], simplifiedOutput)
 							: response;
 					}
 
@@ -530,7 +529,7 @@ export class HaloPSA implements INodeType {
 							response = tickets;
 						}
 						responseData = simplify
-							? simplifyHaloPSAGetOutput(response, simplifiedOutput)
+							? simplifyHaloPSAGetOutput(response as IDataObject[], simplifiedOutput)
 							: response;
 					}
 
@@ -602,7 +601,7 @@ export class HaloPSA implements INodeType {
 							tokens.access_token,
 						);
 						responseData = simplify
-							? simplifyHaloPSAGetOutput([response], simplifiedOutput)
+							? simplifyHaloPSAGetOutput([response] as IDataObject[], simplifiedOutput)
 							: response;
 					}
 
@@ -638,7 +637,7 @@ export class HaloPSA implements INodeType {
 							response = users;
 						}
 						responseData = simplify
-							? simplifyHaloPSAGetOutput(response, simplifiedOutput)
+							? simplifyHaloPSAGetOutput(response as IDataObject[], simplifiedOutput)
 							: response;
 					}
 
@@ -661,7 +660,7 @@ export class HaloPSA implements INodeType {
 				}
 
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as IDataObject[]),
 					{ itemData: { item: i } },
 				);
 
@@ -679,6 +678,6 @@ export class HaloPSA implements INodeType {
 			}
 		}
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

@@ -1,22 +1,27 @@
-import { OptionsWithUri } from 'request';
-
-import { IExecuteFunctions, IHookFunctions } from 'n8n-core';
-
-import { IDataObject, NodeApiError, NodeOperationError } from 'n8n-workflow';
+import type {
+	IExecuteFunctions,
+	IHookFunctions,
+	IDataObject,
+	ILoadOptionsFunctions,
+	JsonObject,
+	IHttpRequestMethods,
+	IRequestOptions,
+} from 'n8n-workflow';
+import { NodeApiError, NodeOperationError } from 'n8n-workflow';
 
 /**
  * Make an API request to Github
  *
  */
 export async function githubApiRequest(
-	this: IHookFunctions | IExecuteFunctions,
-	method: string,
+	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	body: object,
-	query?: object,
+	query?: IDataObject,
 	option: IDataObject = {},
 ): Promise<any> {
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		method,
 		headers: {
 			'User-Agent': 'n8n',
@@ -55,7 +60,7 @@ export async function githubApiRequest(
 
 		return await this.helpers.requestWithAuthentication.call(this, credentialType, options);
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
@@ -71,12 +76,13 @@ export async function getFileSha(
 	filePath: string,
 	branch?: string,
 ): Promise<any> {
-	const getBody: IDataObject = {};
+	const query: IDataObject = {};
 	if (branch !== undefined) {
-		getBody.branch = branch;
+		query.ref = branch;
 	}
+
 	const getEndpoint = `/repos/${owner}/${repository}/contents/${encodeURI(filePath)}`;
-	const responseData = await githubApiRequest.call(this, 'GET', getEndpoint, getBody, {});
+	const responseData = await githubApiRequest.call(this, 'GET', getEndpoint, {}, query);
 
 	if (responseData.sha === undefined) {
 		throw new NodeOperationError(this.getNode(), 'Could not get the SHA of the file.');
@@ -86,7 +92,7 @@ export async function getFileSha(
 
 export async function githubApiRequestAllItems(
 	this: IHookFunctions | IExecuteFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 
 	body: any = {},
@@ -100,11 +106,26 @@ export async function githubApiRequestAllItems(
 	query.page = 1;
 
 	do {
-		responseData = await githubApiRequest.call(this, method, endpoint, body, query, {
+		responseData = await githubApiRequest.call(this, method, endpoint, body as IDataObject, query, {
 			resolveWithFullResponse: true,
 		});
 		query.page++;
-		returnData.push.apply(returnData, responseData.body);
+		returnData.push.apply(returnData, responseData.body as IDataObject[]);
 	} while (responseData.headers.link?.includes('next'));
 	return returnData;
+}
+
+export function isBase64(content: string) {
+	const base64regex = /^([0-9a-zA-Z+/]{4})*(([0-9a-zA-Z+/]{2}==)|([0-9a-zA-Z+/]{3}=))?$/;
+	return base64regex.test(content);
+}
+
+export function validateJSON(json: string | undefined): any {
+	let result;
+	try {
+		result = JSON.parse(json!);
+	} catch (exception) {
+		result = undefined;
+	}
+	return result;
 }

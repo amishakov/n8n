@@ -1,17 +1,15 @@
-import { OptionsWithUri } from 'request';
-
-import {
+import type {
+	IDataObject,
 	IExecuteFunctions,
-	IExecuteSingleFunctions,
 	IHookFunctions,
+	IHttpRequestMethods,
 	ILoadOptionsFunctions,
-} from 'n8n-core';
-
-import { IDataObject } from 'n8n-workflow';
+	IRequestOptions,
+} from 'n8n-workflow';
 
 export async function ghostApiRequest(
-	this: IHookFunctions | IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions,
-	method: string,
+	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
+	method: IHttpRequestMethods,
 	endpoint: string,
 
 	body: any = {},
@@ -34,21 +32,21 @@ export async function ghostApiRequest(
 
 	const credentials = await this.getCredentials(credentialType);
 
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		method,
 		qs: query,
-		uri: uri ?? `${credentials.url}/ghost/api/${version}${endpoint}`,
+		uri: uri || `${credentials.url}/ghost/api/${version}${endpoint}`,
 		body,
 		json: true,
 	};
 
-	return this.helpers.requestWithAuthentication.call(this, credentialType, options);
+	return await this.helpers.requestWithAuthentication.call(this, credentialType, options);
 }
 
 export async function ghostApiRequestAllItems(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
 	propertyName: string,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 
 	body: any = {},
@@ -64,7 +62,7 @@ export async function ghostApiRequestAllItems(
 	do {
 		responseData = await ghostApiRequest.call(this, method, endpoint, body, query);
 		query.page = responseData.meta.pagination.next;
-		returnData.push.apply(returnData, responseData[propertyName]);
+		returnData.push.apply(returnData, responseData[propertyName] as IDataObject[]);
 	} while (query.page !== null);
 	return returnData;
 }

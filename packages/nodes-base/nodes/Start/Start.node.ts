@@ -1,5 +1,10 @@
-import { IExecuteFunctions } from 'n8n-core';
-import { INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
+import {
+	NodeConnectionType,
+	type IExecuteFunctions,
+	type INodeExecutionData,
+	type INodeType,
+	type INodeTypeDescription,
+} from 'n8n-workflow';
 
 export class Start implements INodeType {
 	description: INodeTypeDescription = {
@@ -15,9 +20,9 @@ export class Start implements INodeType {
 			name: 'Start',
 			color: '#00e000',
 		},
-		// eslint-disable-next-line n8n-nodes-base/node-class-description-inputs-wrong-regular-node
+
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		properties: [
 			{
 				displayName:
@@ -32,6 +37,6 @@ export class Start implements INodeType {
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
 
-		return this.prepareOutputData(items);
+		return [items];
 	}
 }

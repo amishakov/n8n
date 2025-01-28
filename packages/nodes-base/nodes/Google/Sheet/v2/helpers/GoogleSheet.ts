@@ -1,25 +1,37 @@
-import { IDataObject, NodeOperationError } from 'n8n-workflow';
-import { IExecuteFunctions, ILoadOptionsFunctions } from 'n8n-core';
-import { apiRequest } from '../transport';
+import get from 'lodash/get';
+import type {
+	IDataObject,
+	IExecuteFunctions,
+	ILoadOptionsFunctions,
+	INode,
+	IPollFunctions,
+} from 'n8n-workflow';
+import { ApplicationError, NodeOperationError } from 'n8n-workflow';
 import { utils as xlsxUtils } from 'xlsx';
-import { get } from 'lodash';
-import {
+
+import type {
 	ILookupValues,
 	ISheetUpdateData,
+	ResourceLocator,
 	SheetCellDecoded,
 	SheetRangeData,
 	SheetRangeDecoded,
+	SpreadSheetResponse,
 	ValueInputOption,
 	ValueRenderOption,
 } from './GoogleSheets.types';
-import { removeEmptyColumns } from './GoogleSheets.utils';
+import { getSheetId, removeEmptyColumns } from './GoogleSheets.utils';
+import { apiRequest } from '../transport';
 
 export class GoogleSheet {
 	id: string;
 
-	executeFunctions: IExecuteFunctions | ILoadOptionsFunctions;
+	executeFunctions: IExecuteFunctions | ILoadOptionsFunctions | IPollFunctions;
 
-	constructor(spreadsheetId: string, executeFunctions: IExecuteFunctions | ILoadOptionsFunctions) {
+	constructor(
+		spreadsheetId: string,
+		executeFunctions: IExecuteFunctions | ILoadOptionsFunctions | IPollFunctions,
+	) {
 		this.executeFunctions = executeFunctions;
 		this.id = spreadsheetId;
 	}
@@ -36,7 +48,8 @@ export class GoogleSheet {
 			const [sheet, ranges] = range.split('!');
 			return `${encodeURIComponent(sheet)}!${ranges}`;
 		}
-		return encodeURIComponent(range);
+		// Use '' so that sheet is not interpreted as range
+		return encodeURIComponent(`'${range}'`);
 	}
 
 	/**
@@ -106,28 +119,32 @@ export class GoogleSheet {
 	}
 
 	/**
-	 *  Returns the name of a sheet from a sheet id
+	 *  Returns the sheet within a spreadsheet based on name or ID
 	 */
-	async spreadsheetGetSheetNameById(sheetId: string) {
+	async spreadsheetGetSheet(node: INode, mode: ResourceLocator, value: string) {
 		const query = {
 			fields: 'sheets.properties',
 		};
 
-		const response = await apiRequest.call(
+		const response = (await apiRequest.call(
 			this.executeFunctions,
 			'GET',
 			`/v4/spreadsheets/${this.id}`,
 			{},
 			query,
-		);
+		)) as SpreadSheetResponse;
 
-		const foundItem = response.sheets.find(
-			(item: { properties: { sheetId: number } }) => item.properties.sheetId === +sheetId,
-		);
+		const foundItem = response.sheets.find((item) => {
+			if (mode === 'name') return item.properties.title === value;
+			return item.properties.sheetId === getSheetId(value);
+		});
+
 		if (!foundItem?.properties?.title) {
-			throw new Error(`Sheet with id ${sheetId} not found`);
+			const error = new Error(`Sheet with ${mode === 'name' ? 'name' : 'ID'} ${value} not found`);
+			throw new NodeOperationError(node, error, { level: 'warning' });
 		}
-		return foundItem.properties.title;
+
+		return foundItem.properties;
 	}
 
 	/**
@@ -212,7 +229,9 @@ export class GoogleSheet {
 		}
 
 		if (requests.length === 0) {
-			throw new Error('Must specify at least one column or row to add');
+			throw new ApplicationError('Must specify at least one column or row to add', {
+				level: 'warning',
+			});
 		}
 
 		const response = await apiRequest.call(
@@ -233,26 +252,10 @@ export class GoogleSheet {
 		data: string[][],
 		valueInputMode: ValueInputOption,
 		lastRow?: number,
+		useAppend?: boolean,
 	) {
-		// const body = {
-		// 	range,
-		// 	values: data,
-		// };
-
-		// const query = {
-		// 	valueInputOption: valueInputMode,
-		// };
-
-		// const response = await apiRequest.call(
-		// 	this.executeFunctions,
-		// 	'POST',
-		// 	`/v4/spreadsheets/${this.id}/values/${this.encodeRange(range)}:append`,
-		// 	body,
-		// 	query,
-		// );
-
 		const lastRowWithData =
-			lastRow ??
+			lastRow ||
 			(((await this.getData(range, 'UNFORMATTED_VALUE')) as string[][]) || []).length + 1;
 
 		const response = await this.updateRows(
@@ -261,6 +264,7 @@ export class GoogleSheet {
 			valueInputMode,
 			lastRowWithData,
 			data.length,
+			useAppend,
 		);
 
 		return response;
@@ -272,6 +276,7 @@ export class GoogleSheet {
 		valueInputMode: ValueInputOption,
 		row: number,
 		rowsLength?: number,
+		useAppend?: boolean,
 	) {
 		const [name, _sheetRange] = sheetName.split('!');
 		const range = `${name}!${row}:${rowsLength ? row + rowsLength - 1 : row}`;
@@ -285,13 +290,25 @@ export class GoogleSheet {
 			valueInputOption: valueInputMode,
 		};
 
-		const response = await apiRequest.call(
-			this.executeFunctions,
-			'PUT',
-			`/v4/spreadsheets/${this.id}/values/${this.encodeRange(range)}`,
-			body,
-			query,
-		);
+		let response;
+
+		if (useAppend) {
+			response = await apiRequest.call(
+				this.executeFunctions,
+				'POST',
+				`/v4/spreadsheets/${this.id}/values/${this.encodeRange(range)}:append`,
+				body,
+				query,
+			);
+		} else {
+			response = await apiRequest.call(
+				this.executeFunctions,
+				'PUT',
+				`/v4/spreadsheets/${this.id}/values/${this.encodeRange(range)}`,
+				body,
+				query,
+			);
+		}
 
 		return response;
 	}
@@ -364,23 +381,34 @@ export class GoogleSheet {
 		return keys;
 	}
 
-	async appendSheetData(
-		inputData: IDataObject[],
-		range: string,
-		keyRowIndex: number,
-		valueInputMode: ValueInputOption,
-		usePathForKeyRow: boolean,
-		columnNamesList?: string[][],
-		lastRow?: number,
-	): Promise<string[][]> {
+	async appendSheetData({
+		inputData,
+		range,
+		keyRowIndex,
+		valueInputMode,
+		usePathForKeyRow,
+		columnNamesList,
+		lastRow,
+		useAppend,
+	}: {
+		inputData: IDataObject[];
+		range: string;
+		keyRowIndex: number;
+		valueInputMode: ValueInputOption;
+		usePathForKeyRow?: boolean;
+		columnNamesList?: string[][];
+		lastRow?: number;
+		useAppend?: boolean;
+	}): Promise<string[][]> {
 		const data = await this.convertObjectArrayToSheetDataArray(
 			inputData,
 			range,
 			keyRowIndex,
 			usePathForKeyRow,
 			columnNamesList,
+			useAppend ? null : '',
 		);
-		return this.appendData(range, data, valueInputMode, lastRow);
+		return await this.appendData(range, data, valueInputMode, lastRow, useAppend);
 	}
 
 	getColumnWithOffset(startColumn: string, offset: number): string {
@@ -388,22 +416,28 @@ export class GoogleSheet {
 		return xlsxUtils.encode_col(columnIndex);
 	}
 
-	async getColumnValues(
-		range: string,
-		keyIndex: number,
-		dataStartRowIndex: number,
-		valueRenderMode: ValueRenderOption,
-		sheetData?: string[][],
-	): Promise<string[]> {
+	async getColumnValues({
+		range,
+		keyIndex,
+		dataStartRowIndex,
+		valueRenderMode,
+		sheetData,
+	}: {
+		range: string;
+		keyIndex: number;
+		dataStartRowIndex: number;
+		valueRenderMode: ValueRenderOption;
+		sheetData?: string[][];
+	}): Promise<string[]> {
 		let columnValuesList;
 		if (sheetData) {
 			columnValuesList = sheetData.slice(dataStartRowIndex - 1).map((row) => row[keyIndex]);
 		} else {
 			const decodedRange = this.getDecodedSheetRange(range);
-			const startRowIndex = decodedRange.start?.row ?? dataStartRowIndex;
-			const endRowIndex = decodedRange.end?.row ?? '';
+			const startRowIndex = decodedRange.start?.row || dataStartRowIndex;
+			const endRowIndex = decodedRange.end?.row || '';
 
-			const keyColumn = this.getColumnWithOffset(decodedRange.start?.column ?? 'A', keyIndex);
+			const keyColumn = this.getColumnWithOffset(decodedRange.start?.column || 'A', keyIndex);
 			const keyColumnRange = `${decodedRange.name}!${keyColumn}${startRowIndex}:${keyColumn}${endRowIndex}`;
 			columnValuesList = await this.getData(keyColumnRange, valueRenderMode);
 		}
@@ -430,22 +464,31 @@ export class GoogleSheet {
 	 * @returns {Promise<string[][]>}
 	 * @memberof GoogleSheet
 	 */
-	async prepareDataForUpdateOrUpsert(
-		inputData: IDataObject[],
-		indexKey: string,
-		range: string,
-		keyRowIndex: number,
-		dataStartRowIndex: number,
-		valueRenderMode: ValueRenderOption,
+	async prepareDataForUpdateOrUpsert({
+		inputData,
+		indexKey,
+		range,
+		keyRowIndex,
+		dataStartRowIndex,
+		valueRenderMode,
 		upsert = false,
-		columnNamesList?: string[][],
-		columnValuesList?: string[],
-	) {
+		columnNamesList,
+		columnValuesList,
+	}: {
+		inputData: IDataObject[];
+		indexKey: string;
+		range: string;
+		keyRowIndex: number;
+		dataStartRowIndex: number;
+		valueRenderMode: ValueRenderOption;
+		upsert?: boolean;
+		columnNamesList?: string[][];
+		columnValuesList?: string[];
+	}) {
 		const decodedRange = this.getDecodedSheetRange(range);
-		// prettier-ignore
-		const	keyRowRange = `${decodedRange.name}!${decodedRange.start?.column ?? ''}${keyRowIndex + 1}:${decodedRange.end?.column ?? ''}${keyRowIndex + 1}`;
+		const keyRowRange = `${decodedRange.name}!${decodedRange.start?.column || ''}${keyRowIndex + 1}:${decodedRange.end?.column || ''}${keyRowIndex + 1}`;
 
-		const sheetDatakeyRow = columnNamesList ?? (await this.getData(keyRowRange, valueRenderMode));
+		const sheetDatakeyRow = columnNamesList || (await this.getData(keyRowRange, valueRenderMode));
 
 		if (sheetDatakeyRow === undefined) {
 			throw new NodeOperationError(
@@ -458,7 +501,7 @@ export class GoogleSheet {
 
 		const keyIndex = columnNames.indexOf(indexKey);
 
-		if (keyIndex === -1) {
+		if (keyIndex === -1 && !upsert) {
 			throw new NodeOperationError(
 				this.executeFunctions.getNode(),
 				`Could not find column for key "${indexKey}"`,
@@ -466,8 +509,8 @@ export class GoogleSheet {
 		}
 
 		const columnValues: Array<string | number> =
-			columnValuesList ??
-			(await this.getColumnValues(range, keyIndex, dataStartRowIndex, valueRenderMode));
+			columnValuesList ||
+			(await this.getColumnValues({ range, keyIndex, dataStartRowIndex, valueRenderMode }));
 
 		const updateData: ISheetUpdateData[] = [];
 		const appendData: IDataObject[] = [];
@@ -524,13 +567,19 @@ export class GoogleSheet {
 				// Property exists so add it to the data to update
 				// Get the column name in which the property data can be found
 				const columnToUpdate = this.getColumnWithOffset(
-					decodedRange.start?.column ?? 'A',
+					decodedRange.start?.column || 'A',
 					columnNames.indexOf(name),
 				);
 
+				let updateValue = item[name] as string;
+				if (typeof updateValue === 'object') {
+					try {
+						updateValue = JSON.stringify(updateValue);
+					} catch (error) {}
+				}
 				updateData.push({
 					range: `${decodedRange.name}!${columnToUpdate}${updateRowIndex}`,
-					values: [[item[name] as string]],
+					values: [[updateValue]],
 				});
 			}
 		}
@@ -539,9 +588,56 @@ export class GoogleSheet {
 	}
 
 	/**
+	 * Updates data in a sheet
+	 *
+	 * @param {IDataObject[]} inputData Data to update Sheet with
+	 * @param {string} range The range to look for data
+	 * @param {number} dataStartRowIndex Index of the first row which contains data
+	 * @param {string[][]} columnNamesList The column names to use
+	 * @returns {Promise<string[][]>}
+	 * @memberof GoogleSheet
+	 */
+	prepareDataForUpdatingByRowNumber(
+		inputData: IDataObject[],
+		range: string,
+		columnNamesList: string[][],
+	) {
+		const decodedRange = this.getDecodedSheetRange(range);
+		const columnNames = columnNamesList[0];
+		const updateData: ISheetUpdateData[] = [];
+
+		for (const item of inputData) {
+			const updateRowIndex = item.row_number as number;
+
+			for (const name of columnNames) {
+				if (name === 'row_number') continue;
+				if (item[name] === undefined || item[name] === null) continue;
+
+				const columnToUpdate = this.getColumnWithOffset(
+					decodedRange.start?.column || 'A',
+					columnNames.indexOf(name),
+				);
+
+				let updateValue = item[name] as string;
+				if (typeof updateValue === 'object') {
+					try {
+						updateValue = JSON.stringify(updateValue);
+					} catch (error) {}
+				}
+				updateData.push({
+					range: `${decodedRange.name}!${columnToUpdate}${updateRowIndex}`,
+					values: [[updateValue]],
+				});
+			}
+		}
+
+		return { updateData };
+	}
+
+	/**
 	 * Looks for a specific value in a column and if it gets found it returns the whole row
 	 *
-	 * @param {string[][]} inputData Data to to check for lookup value in
+	 * @param {string[][]} inputData Data to check for lookup value in
 	 * @param {number} keyRowIndex Index of the row which contains the keys
 	 * @param {number} dataStartRowIndex Index of the first row which contains data
 	 * @param {ILookupValues[]} lookupValues The lookup values which decide what data to return
@@ -549,13 +645,21 @@ export class GoogleSheet {
 	 * @returns {Promise<IDataObject[]>}
 	 * @memberof GoogleSheet
 	 */
-	async lookupValues(
-		inputData: string[][],
-		keyRowIndex: number,
-		dataStartRowIndex: number,
-		lookupValues: ILookupValues[],
-		returnAllMatches?: boolean,
-	): Promise<IDataObject[]> {
+	async lookupValues({
+		inputData,
+		keyRowIndex,
+		dataStartRowIndex,
+		lookupValues,
+		returnAllMatches,
+		combineFilters = 'OR',
+	}: {
+		inputData: string[][];
+		keyRowIndex: number;
+		dataStartRowIndex: number;
+		lookupValues: ILookupValues[];
+		returnAllMatches?: boolean;
+		combineFilters?: 'AND' | 'OR';
+	}): Promise<IDataObject[]> {
 		const keys: string[] = [];
 
 		if (keyRowIndex < 0 || dataStartRowIndex < keyRowIndex || keyRowIndex >= inputData.length) {
@@ -591,28 +695,65 @@ export class GoogleSheet {
 		// const returnData = [inputData[keyRowIndex]];
 		const returnData = [keys];
 
-		lookupLoop: for (const lookupValue of lookupValues) {
-			returnColumnIndex = keys.indexOf(lookupValue.lookupColumn);
+		if (combineFilters === 'OR') {
+			lookupLoop: for (const lookupValue of lookupValues) {
+				returnColumnIndex = keys.indexOf(lookupValue.lookupColumn);
 
-			if (returnColumnIndex === -1) {
-				throw new NodeOperationError(
-					this.executeFunctions.getNode(),
-					`The column "${lookupValue.lookupColumn}" could not be found`,
-				);
+				if (returnColumnIndex === -1) {
+					throw new NodeOperationError(
+						this.executeFunctions.getNode(),
+						`The column "${lookupValue.lookupColumn}" could not be found`,
+					);
+				}
+
+				// Loop over all the items and find the one with the matching value
+				for (rowIndex = dataStartRowIndex; rowIndex < inputData.length; rowIndex++) {
+					if (
+						inputData[rowIndex][returnColumnIndex]?.toString() ===
+						lookupValue.lookupValue.toString()
+					) {
+						if (addedRows.indexOf(rowIndex) === -1) {
+							returnData.push(inputData[rowIndex]);
+							addedRows.push(rowIndex);
+						}
+
+						if (returnAllMatches !== true) {
+							continue lookupLoop;
+						}
+					}
+				}
 			}
+		} else {
+			lookupLoop: for (rowIndex = dataStartRowIndex; rowIndex < inputData.length; rowIndex++) {
+				let allMatch = true;
 
-			// Loop over all the items and find the one with the matching value
-			for (rowIndex = dataStartRowIndex; rowIndex < inputData.length; rowIndex++) {
-				if (
-					inputData[rowIndex][returnColumnIndex]?.toString() === lookupValue.lookupValue.toString()
-				) {
+				for (const lookupValue of lookupValues) {
+					returnColumnIndex = keys.indexOf(lookupValue.lookupColumn);
+
+					if (returnColumnIndex === -1) {
+						throw new NodeOperationError(
+							this.executeFunctions.getNode(),
+							`The column "${lookupValue.lookupColumn}" could not be found`,
+						);
+					}
+
+					if (
+						inputData[rowIndex][returnColumnIndex]?.toString() !==
+						lookupValue.lookupValue.toString()
+					) {
+						allMatch = false;
+						break;
+					}
+				}
+
+				if (allMatch) {
 					if (addedRows.indexOf(rowIndex) === -1) {
 						returnData.push(inputData[rowIndex]);
 						addedRows.push(rowIndex);
 					}
 
 					if (returnAllMatches !== true) {
-						continue lookupLoop;
+						break lookupLoop;
 					}
 				}
 			}
@@ -631,13 +772,14 @@ export class GoogleSheet {
 		inputData: IDataObject[],
 		range: string,
 		keyRowIndex: number,
-		usePathForKeyRow: boolean,
+		usePathForKeyRow?: boolean,
 		columnNamesList?: string[][],
+		emptyValue: string | null = '',
 	): Promise<string[][]> {
 		const decodedRange = this.getDecodedSheetRange(range);
 
 		const columnNamesRow =
-			columnNamesList ??
+			columnNamesList ||
 			(await this.getData(
 				`${decodedRange.name}!${keyRowIndex}:${keyRowIndex}`,
 				'UNFORMATTED_VALUE',
@@ -663,7 +805,7 @@ export class GoogleSheet {
 					value = item[key] as string;
 				}
 				if (value === undefined || value === null) {
-					rowData.push('');
+					rowData.push(emptyValue as string);
 					return;
 				}
 				if (typeof value === 'object') {
@@ -701,7 +843,7 @@ export class GoogleSheet {
 	}
 
 	private splitCellRange(cell: string, range: string): SheetCellDecoded {
-		const cellData = cell.match(/([a-zA-Z]{1,10})([0-9]{0,10})/) ?? [];
+		const cellData = cell.match(/([a-zA-Z]{1,10})([0-9]{0,10})/) || [];
 
 		if (cellData === null || cellData.length !== 3) {
 			throw new NodeOperationError(

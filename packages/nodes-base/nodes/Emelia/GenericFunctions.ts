@@ -1,28 +1,31 @@
-import { IExecuteFunctions, ILoadOptionsFunctions } from 'n8n-core';
-
-import {
+import type {
 	ICredentialsDecrypted,
 	ICredentialTestFunctions,
+	IExecuteFunctions,
+	ILoadOptionsFunctions,
 	IHookFunctions,
 	INodeCredentialTestResult,
 	INodePropertyOptions,
 	JsonObject,
-	NodeApiError,
+	IRequestOptions,
+	IHttpRequestMethods,
+	IDataObject,
 } from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
 
 /**
  * Make an authenticated REST API request to Emelia, used for trigger node.
  */
 export async function emeliaApiRequest(
 	this: IExecuteFunctions | ILoadOptionsFunctions | IHookFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	body: object = {},
-	qs: object = {},
+	qs: IDataObject = {},
 ) {
-	const { apiKey } = (await this.getCredentials('emeliaApi')) as { apiKey: string };
+	const { apiKey } = await this.getCredentials<{ apiKey: string }>('emeliaApi');
 
-	const options = {
+	const options: IRequestOptions = {
 		headers: {
 			Authorization: apiKey,
 		},
@@ -50,7 +53,7 @@ export async function emeliaGraphqlRequest(
 	const response = await emeliaApiRequest.call(this, 'POST', '/graphql', body);
 
 	if (response.errors) {
-		throw new NodeApiError(this.getNode(), response);
+		throw new NodeApiError(this.getNode(), response as JsonObject);
 	}
 
 	return response;

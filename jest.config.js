@@ -1,14 +1,16 @@
 const { compilerOptions } = require('./tsconfig.json');
 
+/** @type {import('ts-jest').TsJestGlobalOptions} */
 const tsJestOptions = {
 	isolatedModules: true,
 	tsconfig: {
 		...compilerOptions,
 		declaration: false,
-		sourceMap: false,
-		skipLibCheck: true,
+		sourceMap: true,
 	},
 };
+
+const { baseUrl, paths } = require('get-tsconfig').getTsconfig().config?.compilerOptions;
 
 /** @type {import('jest').Config} */
 const config = {
@@ -19,14 +21,25 @@ const config = {
 	transform: {
 		'^.+\\.ts$': ['ts-jest', tsJestOptions],
 	},
-	moduleNameMapper: {
-		'^@/(.*)$': '<rootDir>/src/$1',
-	},
+	// This resolve the path mappings from the tsconfig relative to each jest.config.js
+	moduleNameMapper: Object.entries(paths || {}).reduce((acc, [path, [mapping]]) => {
+		path = `^${path.replace(/\/\*$/, '/(.*)$')}`;
+		mapping = mapping.replace(/^\.?\.\/(?:(.*)\/)?\*$/, '$1');
+		mapping = mapping ? `/${mapping}` : '';
+		acc[path] = mapping.startsWith('/test')
+			? '<rootDir>' + mapping + '/$1'
+			: '<rootDir>' + (baseUrl ? `/${baseUrl.replace(/^\.\//, '')}` : '') + mapping + '/$1';
+		return acc;
+	}, {}),
+	setupFilesAfterEnv: ['jest-expect-message'],
+	collectCoverage: process.env.COVERAGE_ENABLED === 'true',
+	coverageReporters: ['text-summary'],
+	collectCoverageFrom: ['src/**/*.ts'],
 };
 
 if (process.env.CI === 'true') {
-	config.maxWorkers = 2;
-	config.workerIdleMemoryLimit = 2048;
+	config.workerIdleMemoryLimit = 1024;
+	config.coverageReporters = ['cobertura'];
 }
 
 module.exports = config;

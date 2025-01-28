@@ -1,29 +1,33 @@
-import { OptionsWithUri } from 'request';
-
-import { IExecuteFunctions, ILoadOptionsFunctions } from 'n8n-core';
+import type {
+	IDataObject,
+	IExecuteFunctions,
+	IHttpRequestMethods,
+	ILoadOptionsFunctions,
+	IRequestOptions,
+} from 'n8n-workflow';
 
 export async function rocketchatApiRequest(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
 	resource: string,
-	method: string,
+	method: IHttpRequestMethods,
 	operation: string,
 
 	body: any = {},
-	headers?: object,
+	headers?: IDataObject,
 ): Promise<any> {
 	const credentials = await this.getCredentials('rocketchatApi');
 
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		headers,
 		method,
 		body,
 		uri: `${credentials.domain}/api/v1${resource}.${operation}`,
 		json: true,
 	};
-	if (Object.keys(options.body).length === 0) {
+	if (Object.keys(options.body as IDataObject).length === 0) {
 		delete options.body;
 	}
-	return this.helpers.requestWithAuthentication.call(this, 'rocketchatApi', options);
+	return await this.helpers.requestWithAuthentication.call(this, 'rocketchatApi', options);
 }
 
 export function validateJSON(json: string | undefined): any {

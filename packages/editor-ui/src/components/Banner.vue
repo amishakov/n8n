@@ -1,5 +1,42 @@
+<script setup lang="ts">
+import { ref } from 'vue';
+
+interface Props {
+	theme: 'success' | 'danger';
+	message: string;
+	buttonLabel?: string;
+	buttonLoadingLabel?: string;
+	buttonTitle?: string;
+	details?: string;
+	buttonLoading?: boolean;
+}
+
+withDefaults(defineProps<Props>(), {
+	buttonLoading: false,
+	buttonLabel: '',
+	buttonLoadingLabel: '',
+	buttonTitle: '',
+	details: '',
+});
+
+const emit = defineEmits<{
+	click: [];
+}>();
+
+const expanded = ref(false);
+
+const expand = () => {
+	expanded.value = true;
+};
+
+const onClick = () => {
+	expanded.value = false;
+	emit('click');
+};
+</script>
+
 <template>
-	<el-tag :type="theme" size="medium" :disable-transitions="true" :class="$style.container">
+	<el-tag :type="theme" :disable-transitions="true" :class="$style.container">
 		<font-awesome-icon
 			:icon="theme === 'success' ? 'check-circle' : 'exclamation-triangle'"
 			:class="theme === 'success' ? $style.icon : $style.dangerIcon"
@@ -16,8 +53,9 @@
 				</div>
 			</div>
 
+			<slot v-if="$slots.button" name="button" />
 			<n8n-button
-				v-if="buttonLabel"
+				v-else-if="buttonLabel"
 				:label="buttonLoading && buttonLoadingLabel ? buttonLoadingLabel : buttonLabel"
 				:title="buttonTitle"
 				:type="theme"
@@ -34,58 +72,13 @@
 	</el-tag>
 </template>
 
-<script lang="ts">
-import Vue from 'vue';
-
-export default Vue.extend({
-	name: 'Banner',
-	data() {
-		return {
-			expanded: false,
-		};
-	},
-	props: {
-		theme: {
-			type: String,
-			validator: (value: string): boolean => ['success', 'danger'].indexOf(value) !== -1,
-		},
-		message: {
-			type: String,
-		},
-		buttonLabel: {
-			type: String,
-		},
-		buttonLoadingLabel: {
-			type: String,
-		},
-		buttonTitle: {
-			type: String,
-		},
-		details: {
-			type: String,
-		},
-		buttonLoading: {
-			type: Boolean,
-			default: false,
-		},
-	},
-	methods: {
-		expand() {
-			this.expanded = true;
-		},
-		onClick() {
-			this.expanded = false;
-			this.$emit('click');
-		},
-	},
-});
-</script>
-
 <style module lang="scss">
 .icon {
 	position: absolute;
 	left: 14px;
-	top: 18px;
+	top: 0;
+	bottom: 0;
+	margin: auto 0;
 }
 
 .dangerIcon {
@@ -109,7 +102,7 @@ export default Vue.extend({
 
 .dangerMessage {
 	composes: message;
-	color: var(--color-danger);
+	color: var(--color-callout-danger-font);
 }
 
 .banner {

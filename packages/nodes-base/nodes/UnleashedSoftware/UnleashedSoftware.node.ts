@@ -1,18 +1,20 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import { IDataObject, INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
+import moment from 'moment-timezone';
+import {
+	type IExecuteFunctions,
+	type IDataObject,
+	type INodeExecutionData,
+	type INodeType,
+	type INodeTypeDescription,
+	NodeConnectionType,
+} from 'n8n-workflow';
 
 import {
 	convertNETDates,
 	unleashedApiRequest,
 	unleashedApiRequestAllItems,
 } from './GenericFunctions';
-
 import { salesOrderFields, salesOrderOperations } from './SalesOrderDescription';
-
 import { stockOnHandFields, stockOnHandOperations } from './StockOnHandDescription';
-
-import moment from 'moment';
 
 export class UnleashedSoftware implements INodeType {
 	description: INodeTypeDescription = {
@@ -27,8 +29,8 @@ export class UnleashedSoftware implements INodeType {
 		defaults: {
 			name: 'Unleashed Software',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'unleashedSoftwareApi',
@@ -66,7 +68,7 @@ export class UnleashedSoftware implements INodeType {
 		const returnData: INodeExecutionData[] = [];
 		const length = items.length;
 		const qs: IDataObject = {};
-		let responseData;
+		let responseData: IDataObject | IDataObject[] = [];
 
 		for (let i = 0; i < length; i++) {
 			const resource = this.getNodeParameter('resource', 0);
@@ -108,8 +110,15 @@ export class UnleashedSoftware implements INodeType {
 					} else {
 						const limit = this.getNodeParameter('limit', i);
 						qs.pageSize = limit;
-						responseData = await unleashedApiRequest.call(this, 'GET', '/SalesOrders', {}, qs, 1);
-						responseData = responseData.Items;
+						responseData = (await unleashedApiRequest.call(
+							this,
+							'GET',
+							'/SalesOrders',
+							{},
+							qs,
+							1,
+						)) as IDataObject;
+						responseData = responseData.Items as IDataObject[];
 					}
 					convertNETDates(responseData);
 					responseData = this.helpers.constructExecutionMetaData(
@@ -152,8 +161,15 @@ export class UnleashedSoftware implements INodeType {
 					} else {
 						const limit = this.getNodeParameter('limit', i);
 						qs.pageSize = limit;
-						responseData = await unleashedApiRequest.call(this, 'GET', '/StockOnHand', {}, qs, 1);
-						responseData = responseData.Items;
+						responseData = (await unleashedApiRequest.call(
+							this,
+							'GET',
+							'/StockOnHand',
+							{},
+							qs,
+							1,
+						)) as IDataObject;
+						responseData = responseData.Items as IDataObject[];
 					}
 
 					convertNETDates(responseData);
@@ -176,6 +192,6 @@ export class UnleashedSoftware implements INodeType {
 			returnData.push(...executionData);
 		}
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

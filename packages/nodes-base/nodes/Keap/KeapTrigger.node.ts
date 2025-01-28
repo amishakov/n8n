@@ -1,6 +1,7 @@
-import { IHookFunctions, IWebhookFunctions } from 'n8n-core';
-
-import {
+import { capitalCase } from 'change-case';
+import type {
+	IHookFunctions,
+	IWebhookFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodePropertyOptions,
@@ -8,10 +9,9 @@ import {
 	INodeTypeDescription,
 	IWebhookResponseData,
 } from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
 
 import { keapApiRequest } from './GenericFunctions';
-
-import { capitalCase } from 'change-case';
 
 export class KeapTrigger implements INodeType {
 	description: INodeTypeDescription = {
@@ -27,7 +27,7 @@ export class KeapTrigger implements INodeType {
 			name: 'Keap Trigger',
 		},
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'keapOAuth2Api',
@@ -48,7 +48,7 @@ export class KeapTrigger implements INodeType {
 				name: 'eventId',
 				type: 'options',
 				description:
-					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>',
+					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 				typeOptions: {
 					loadOptionsMethod: 'getEvents',
 				},
@@ -67,7 +67,7 @@ export class KeapTrigger implements INodeType {
 
 	methods = {
 		loadOptions: {
-			// Get all the event types to display them to user so that he can
+			// Get all the event types to display them to user so that they can
 			// select them easily
 			async getEvents(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -85,7 +85,6 @@ export class KeapTrigger implements INodeType {
 		},
 	};
 
-	// @ts-ignore (because of request)
 	webhookMethods = {
 		default: {
 			async checkExists(this: IHookFunctions): Promise<boolean> {
@@ -141,7 +140,7 @@ export class KeapTrigger implements INodeType {
 					}
 
 					// Remove from the static workflow data so that it is clear
-					// that no webhooks are registred anymore
+					// that no webhooks are registered anymore
 					delete webhookData.webhookId;
 				}
 

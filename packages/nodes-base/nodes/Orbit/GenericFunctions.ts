@@ -1,19 +1,19 @@
-import { OptionsWithUri } from 'request';
-
-import {
+import type {
+	JsonObject,
 	IExecuteFunctions,
-	IExecuteSingleFunctions,
 	IHookFunctions,
 	ILoadOptionsFunctions,
-} from 'n8n-core';
+	IDataObject,
+	IHttpRequestMethods,
+	IRequestOptions,
+} from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
 
-import { IDataObject, NodeApiError } from 'n8n-workflow';
-
-import { IRelation } from './Interfaces';
+import type { IRelation } from './Interfaces';
 
 export async function orbitApiRequest(
-	this: IHookFunctions | IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions,
-	method: string,
+	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
+	method: IHttpRequestMethods,
 	resource: string,
 
 	body: any = {},
@@ -23,14 +23,14 @@ export async function orbitApiRequest(
 ): Promise<any> {
 	try {
 		const credentials = await this.getCredentials('orbitApi');
-		let options: OptionsWithUri = {
+		let options: IRequestOptions = {
 			headers: {
 				Authorization: `Bearer ${credentials.accessToken}`,
 			},
 			method,
 			qs,
 			body,
-			uri: uri ?? `https://app.orbit.love/api/v1${resource}`,
+			uri: uri || `https://app.orbit.love/api/v1${resource}`,
 			json: true,
 		};
 
@@ -38,7 +38,7 @@ export async function orbitApiRequest(
 
 		return await this.helpers.request(options);
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
@@ -86,7 +86,7 @@ export function resolveMember(responseData: IRelation) {
 export async function orbitApiRequestAllItems(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
 	propertyName: string,
-	method: string,
+	method: IHttpRequestMethods,
 	resource: string,
 
 	body: any = {},
@@ -99,18 +99,19 @@ export async function orbitApiRequestAllItems(
 
 	do {
 		responseData = await orbitApiRequest.call(this, method, resource, body, query);
-		returnData.push.apply(returnData, responseData[propertyName]);
+		returnData.push.apply(returnData, responseData[propertyName] as IDataObject[]);
 
 		if (query.resolveIdentities === true) {
-			resolveIdentities(responseData);
+			resolveIdentities(responseData as IRelation);
 		}
 
 		if (query.resolveMember === true) {
-			resolveMember(responseData);
+			resolveMember(responseData as IRelation);
 		}
 
 		query.page++;
-		if (query.limit && returnData.length >= query.limit) {
+		const limit = query.limit as number | undefined;
+		if (limit && returnData.length >= limit) {
 			return returnData;
 		}
 	} while (responseData.data.length !== 0);

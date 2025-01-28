@@ -1,23 +1,27 @@
-import { OptionsWithUri } from 'request';
-
-import { IExecuteFunctions, IExecuteSingleFunctions, ILoadOptionsFunctions } from 'n8n-core';
-
-import { IDataObject, NodeApiError } from 'n8n-workflow';
+import type {
+	IExecuteFunctions,
+	ILoadOptionsFunctions,
+	IDataObject,
+	JsonObject,
+	IHttpRequestMethods,
+	IRequestOptions,
+} from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
 
 export async function zoomApiRequest(
-	this: IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions,
-	method: string,
+	this: IExecuteFunctions | ILoadOptionsFunctions,
+	method: IHttpRequestMethods,
 	resource: string,
 	body: object = {},
-	query: object = {},
+	query: IDataObject = {},
 	headers: IDataObject | undefined = undefined,
 	option: IDataObject = {},
 ) {
 	const authenticationMethod = this.getNodeParameter('authentication', 0, 'accessToken') as string;
 
-	let options: OptionsWithUri = {
+	let options: IRequestOptions = {
 		method,
-		headers: headers ?? {
+		headers: headers || {
 			'Content-Type': 'application/json',
 		},
 		body,
@@ -37,16 +41,15 @@ export async function zoomApiRequest(
 		if (authenticationMethod === 'accessToken') {
 			return await this.helpers.requestWithAuthentication.call(this, 'zoomApi', options);
 		} else {
-			//@ts-ignore
 			return await this.helpers.requestOAuth2.call(this, 'zoomOAuth2Api', options);
 		}
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
 async function wait() {
-	return new Promise((resolve, _reject) => {
+	return await new Promise((resolve, _reject) => {
 		setTimeout(() => {
 			resolve(true);
 		}, 1000);
@@ -56,7 +59,7 @@ async function wait() {
 export async function zoomApiRequestAllItems(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
 	propertyName: string,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	body: IDataObject = {},
 	query: IDataObject = {},
@@ -67,7 +70,7 @@ export async function zoomApiRequestAllItems(
 	do {
 		responseData = await zoomApiRequest.call(this, method, endpoint, body, query);
 		query.page_number++;
-		returnData.push.apply(returnData, responseData[propertyName]);
+		returnData.push.apply(returnData, responseData[propertyName] as IDataObject[]);
 		// zoom free plan rate limit is 1 request/second
 		// TODO just wait when the plan is free
 		await wait();

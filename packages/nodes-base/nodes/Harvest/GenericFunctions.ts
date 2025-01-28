@@ -1,24 +1,24 @@
-import { OptionsWithUri } from 'request';
-
-import {
+import type {
+	IDataObject,
 	IExecuteFunctions,
-	IExecuteSingleFunctions,
 	IHookFunctions,
 	ILoadOptionsFunctions,
-} from 'n8n-core';
-
-import { IDataObject, NodeApiError } from 'n8n-workflow';
+	JsonObject,
+	IRequestOptions,
+	IHttpRequestMethods,
+} from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
 
 export async function harvestApiRequest(
-	this: IHookFunctions | IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions,
-	method: string,
+	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
+	method: IHttpRequestMethods,
 	qs: IDataObject,
 	path: string,
 	body: IDataObject = {},
 	option: IDataObject = {},
 	uri?: string,
 ): Promise<any> {
-	let options: OptionsWithUri = {
+	let options: IRequestOptions = {
 		headers: {
 			'Harvest-Account-Id': `${this.getNodeParameter('accountId', 0)}`,
 			'User-Agent': 'Harvest App',
@@ -26,13 +26,13 @@ export async function harvestApiRequest(
 		},
 		method,
 		body,
-		uri: uri ?? `https://api.harvestapp.com/v2/${path}`,
+		uri: uri || `https://api.harvestapp.com/v2/${path}`,
 		qs,
 		json: true,
 	};
 
 	options = Object.assign({}, options, option);
-	if (Object.keys(options.body).length === 0) {
+	if (Object.keys(options.body as IDataObject).length === 0) {
 		delete options.body;
 	}
 	const authenticationMethod = this.getNodeParameter('authentication', 0);
@@ -49,7 +49,7 @@ export async function harvestApiRequest(
 			return await this.helpers.requestOAuth2.call(this, 'harvestOAuth2Api', options);
 		}
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
@@ -58,8 +58,8 @@ export async function harvestApiRequest(
  * and return all results
  */
 export async function harvestApiRequestAllItems(
-	this: IHookFunctions | IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions,
-	method: string,
+	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
+	method: IHttpRequestMethods,
 	qs: IDataObject,
 	uri: string,
 	resource: string,
@@ -73,7 +73,7 @@ export async function harvestApiRequestAllItems(
 	do {
 		responseData = await harvestApiRequest.call(this, method, qs, uri, body, option);
 		qs.page = responseData.next_page;
-		returnData.push.apply(returnData, responseData[resource]);
+		returnData.push.apply(returnData, responseData[resource] as IDataObject[]);
 	} while (responseData.next_page);
 
 	return returnData;

@@ -1,17 +1,16 @@
-import { IExecuteFunctions } from 'n8n-core';
-
 import {
-	ICredentialsDecrypted,
-	ICredentialTestFunctions,
-	IDataObject,
-	ILoadOptionsFunctions,
-	INodeCredentialTestResult,
-	INodeExecutionData,
-	INodeType,
-	INodeTypeDescription,
+	type IExecuteFunctions,
+	type ICredentialsDecrypted,
+	type ICredentialTestFunctions,
+	type IDataObject,
+	type ILoadOptionsFunctions,
+	type INodeCredentialTestResult,
+	type INodeExecutionData,
+	type INodeType,
+	type INodeTypeDescription,
+	type IRequestOptions,
+	NodeConnectionType,
 } from 'n8n-workflow';
-
-import { OptionsWithUri } from 'request';
 
 import {
 	gristApiRequest,
@@ -21,10 +20,8 @@ import {
 	parseSortProperties,
 	throwOnZeroDefinedFields,
 } from './GenericFunctions';
-
 import { operationFields } from './OperationDescription';
-
-import {
+import type {
 	FieldsToSend,
 	GristColumns,
 	GristCreateRowPayload,
@@ -46,8 +43,8 @@ export class Grist implements INodeType {
 		defaults: {
 			name: 'Grist',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'gristApi',
@@ -84,10 +81,10 @@ export class Grist implements INodeType {
 					planType === 'free'
 						? `https://docs.getgrist.com/api${endpoint}`
 						: planType === 'paid'
-						? `https://${customSubdomain}.getgrist.com/api${endpoint}`
-						: `${selfHostedUrl}/api${endpoint}`;
+							? `https://${customSubdomain}.getgrist.com/api${endpoint}`
+							: `${selfHostedUrl}/api${endpoint}`;
 
-				const options: OptionsWithUri = {
+				const options: IRequestOptions = {
 					headers: {
 						Authorization: `Bearer ${apiKey}`,
 					},
@@ -116,7 +113,7 @@ export class Grist implements INodeType {
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
 		let responseData;
-		const returnData: IDataObject[] = [];
+		const returnData: INodeExecutionData[] = [];
 
 		const operation = this.getNodeParameter('operation', 0);
 
@@ -247,17 +244,23 @@ export class Grist implements INodeType {
 				}
 			} catch (error) {
 				if (this.continueOnFail()) {
-					returnData.push({ error: error.message });
+					const executionData = this.helpers.constructExecutionMetaData(
+						this.helpers.returnJsonArray({ error: error.message }),
+						{ itemData: { item: i } },
+					);
+					returnData.push(...executionData);
+
 					continue;
 				}
 				throw error;
 			}
-
-			Array.isArray(responseData)
-				? returnData.push(...responseData)
-				: returnData.push(responseData);
+			const executionData = this.helpers.constructExecutionMetaData(
+				this.helpers.returnJsonArray(responseData as IDataObject[]),
+				{ itemData: { item: i } },
+			);
+			returnData.push(...executionData);
 		}
 
-		return [this.helpers.returnJsonArray(returnData)];
+		return [returnData];
 	}
 }

@@ -1,14 +1,16 @@
-import { IHookFunctions, IWebhookFunctions } from 'n8n-core';
-
-import {
+import type {
+	IHookFunctions,
+	IWebhookFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
 	IWebhookResponseData,
-	NodeApiError,
+	JsonObject,
 } from 'n8n-workflow';
+import { NodeApiError, NodeConnectionType } from 'n8n-workflow';
+
 import { payPalApiRequest, upperFist } from './GenericFunctions';
 
 export class PayPalTrigger implements INodeType {
@@ -23,7 +25,7 @@ export class PayPalTrigger implements INodeType {
 			name: 'PayPal Trigger',
 		},
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'payPalApi',
@@ -34,7 +36,7 @@ export class PayPalTrigger implements INodeType {
 			{
 				name: 'default',
 				httpMethod: 'POST',
-				reponseMode: 'onReceived',
+				responseMode: 'onReceived',
 				path: 'webhook',
 			},
 		],
@@ -46,7 +48,7 @@ export class PayPalTrigger implements INodeType {
 				required: true,
 				default: [],
 				description:
-					'The event to listen to. Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+					'The event to listen to. Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 				typeOptions: {
 					loadOptionsMethod: 'getEvents',
 				},
@@ -57,7 +59,7 @@ export class PayPalTrigger implements INodeType {
 
 	methods = {
 		loadOptions: {
-			// Get all the events types to display them to user so that he can
+			// Get all the events types to display them to user so that they can
 			// select them easily
 			async getEvents(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [
@@ -72,10 +74,10 @@ export class PayPalTrigger implements INodeType {
 					const endpoint = '/notifications/webhooks-event-types';
 					events = await payPalApiRequest.call(this, endpoint, 'GET');
 				} catch (error) {
-					throw new NodeApiError(this.getNode(), error);
+					throw new NodeApiError(this.getNode(), error as JsonObject);
 				}
 				for (const event of events.event_types) {
-					const eventName = upperFist(event.name);
+					const eventName = upperFist(event.name as string);
 					const eventId = event.name;
 					const eventDescription = event.description;
 
@@ -90,7 +92,6 @@ export class PayPalTrigger implements INodeType {
 		},
 	};
 
-	// @ts-ignore (because of request)
 	webhookMethods = {
 		default: {
 			async checkExists(this: IHookFunctions): Promise<boolean> {
@@ -108,13 +109,12 @@ export class PayPalTrigger implements INodeType {
 						delete webhookData.webhookId;
 						return false;
 					}
-					throw new NodeApiError(this.getNode(), error);
+					throw new NodeApiError(this.getNode(), error as JsonObject);
 				}
 				return true;
 			},
 
 			async create(this: IHookFunctions): Promise<boolean> {
-				let webhook;
 				const webhookUrl = this.getNodeWebhookUrl('default');
 				const events = this.getNodeParameter('events', []) as string[];
 				const body = {
@@ -124,11 +124,7 @@ export class PayPalTrigger implements INodeType {
 					}),
 				};
 				const endpoint = '/notifications/webhooks';
-				try {
-					webhook = await payPalApiRequest.call(this, endpoint, 'POST', body);
-				} catch (error) {
-					throw error;
-				}
+				const webhook = await payPalApiRequest.call(this, endpoint, 'POST', body);
 
 				if (webhook.id === undefined) {
 					return false;
@@ -155,19 +151,18 @@ export class PayPalTrigger implements INodeType {
 	};
 
 	async webhook(this: IWebhookFunctions): Promise<IWebhookResponseData> {
-		let webhook;
 		const webhookData = this.getWorkflowStaticData('node');
 		const bodyData = this.getBodyData();
 		const req = this.getRequestObject();
 		const headerData = this.getHeaderData() as IDataObject;
 		const endpoint = '/notifications/verify-webhook-signature';
 
-		const { env } = (await this.getCredentials('payPalApi')) as { env: string };
+		const { env } = await this.getCredentials<{ env: string }>('payPalApi');
 
 		// if sanbox omit verification
 		if (env === 'sanbox') {
 			return {
-				workflowData: [this.helpers.returnJsonArray(req.body)],
+				workflowData: [this.helpers.returnJsonArray(req.body as IDataObject)],
 			};
 		}
 
@@ -187,11 +182,7 @@ export class PayPalTrigger implements INodeType {
 				webhook_id: webhookData.webhookId,
 				webhook_event: bodyData,
 			};
-			try {
-				webhook = await payPalApiRequest.call(this, endpoint, 'POST', body);
-			} catch (error) {
-				throw error;
-			}
+			const webhook = await payPalApiRequest.call(this, endpoint, 'POST', body);
 			if (webhook.verification_status !== 'SUCCESS') {
 				return {};
 			}
@@ -199,7 +190,7 @@ export class PayPalTrigger implements INodeType {
 			return {};
 		}
 		return {
-			workflowData: [this.helpers.returnJsonArray(req.body)],
+			workflowData: [this.helpers.returnJsonArray(req.body as IDataObject)],
 		};
 	}
 }

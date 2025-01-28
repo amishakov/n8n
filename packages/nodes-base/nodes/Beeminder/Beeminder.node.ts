@@ -1,13 +1,14 @@
-import { IExecuteFunctions } from 'n8n-core';
-
+import moment from 'moment-timezone';
 import {
-	IDataObject,
-	ILoadOptionsFunctions,
-	INodeExecutionData,
-	INodeParameters,
-	INodePropertyOptions,
-	INodeType,
-	INodeTypeDescription,
+	type IExecuteFunctions,
+	type IDataObject,
+	type ILoadOptionsFunctions,
+	type INodeExecutionData,
+	type INodeParameters,
+	type INodePropertyOptions,
+	type INodeType,
+	type INodeTypeDescription,
+	NodeConnectionType,
 } from 'n8n-workflow';
 
 import {
@@ -16,10 +17,7 @@ import {
 	getAllDatapoints,
 	updateDatapoint,
 } from './Beeminder.node.functions';
-
 import { beeminderApiRequest } from './GenericFunctions';
-
-import moment from 'moment-timezone';
 
 export class Beeminder implements INodeType {
 	description: INodeTypeDescription = {
@@ -34,8 +32,8 @@ export class Beeminder implements INodeType {
 		},
 		// eslint-disable-next-line n8n-nodes-base/node-class-description-icon-not-svg
 		icon: 'file:beeminder.png',
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'beeminderApi',
@@ -105,7 +103,7 @@ export class Beeminder implements INodeType {
 				},
 				default: '',
 				description:
-					'The name of the goal. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+					'The name of the goal. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 				required: true,
 			},
 			{
@@ -270,7 +268,7 @@ export class Beeminder implements INodeType {
 
 	methods = {
 		loadOptions: {
-			// Get all the available groups to display them to user so that he can
+			// Get all the available groups to display them to user so that they can
 			// select them easily
 			async getGoals(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const credentials = await this.getCredentials('beeminderApi');
@@ -318,7 +316,7 @@ export class Beeminder implements INodeType {
 						}
 						results = await createDatapoint.call(this, data);
 						const executionData = this.helpers.constructExecutionMetaData(
-							this.helpers.returnJsonArray(results),
+							this.helpers.returnJsonArray(results as IDataObject[]),
 							{ itemData: { item: i } },
 						);
 						returnData.push(...executionData);
@@ -336,7 +334,7 @@ export class Beeminder implements INodeType {
 
 						results = await getAllDatapoints.call(this, data);
 						const executionData = this.helpers.constructExecutionMetaData(
-							this.helpers.returnJsonArray(results),
+							this.helpers.returnJsonArray(results as IDataObject[]),
 							{ itemData: { item: i } },
 						);
 						returnData.push(...executionData);
@@ -353,7 +351,7 @@ export class Beeminder implements INodeType {
 						}
 						results = await updateDatapoint.call(this, data);
 						const executionData = this.helpers.constructExecutionMetaData(
-							this.helpers.returnJsonArray(results),
+							this.helpers.returnJsonArray(results as IDataObject[]),
 							{ itemData: { item: i } },
 						);
 						returnData.push(...executionData);
@@ -365,7 +363,7 @@ export class Beeminder implements INodeType {
 						};
 						results = await deleteDatapoint.call(this, data);
 						const executionData = this.helpers.constructExecutionMetaData(
-							this.helpers.returnJsonArray(results),
+							this.helpers.returnJsonArray(results as IDataObject[]),
 							{ itemData: { item: i } },
 						);
 						returnData.push(...executionData);
@@ -380,6 +378,6 @@ export class Beeminder implements INodeType {
 			}
 		}
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }
