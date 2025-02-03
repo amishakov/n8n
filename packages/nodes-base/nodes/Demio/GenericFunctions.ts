@@ -1,17 +1,17 @@
-import { OptionsWithUri } from 'request';
-
-import {
+import type {
+	IDataObject,
 	IExecuteFunctions,
-	IExecuteSingleFunctions,
 	IHookFunctions,
 	ILoadOptionsFunctions,
-} from 'n8n-core';
-
-import { IDataObject, NodeApiError } from 'n8n-workflow';
+	JsonObject,
+	IRequestOptions,
+	IHttpRequestMethods,
+} from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
 
 export async function demioApiRequest(
-	this: IHookFunctions | IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions,
-	method: string,
+	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
+	method: IHttpRequestMethods,
 	resource: string,
 
 	body: any = {},
@@ -21,7 +21,7 @@ export async function demioApiRequest(
 ): Promise<any> {
 	try {
 		const credentials = await this.getCredentials('demioApi');
-		let options: OptionsWithUri = {
+		let options: IRequestOptions = {
 			headers: {
 				'Api-Key': credentials.apiKey,
 				'Api-Secret': credentials.apiSecret,
@@ -29,7 +29,7 @@ export async function demioApiRequest(
 			method,
 			qs,
 			body,
-			uri: uri ?? `https://my.demio.com/api/v1${resource}`,
+			uri: uri || `https://my.demio.com/api/v1${resource}`,
 			json: true,
 		};
 
@@ -37,6 +37,6 @@ export async function demioApiRequest(
 
 		return await this.helpers.request(options);
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }

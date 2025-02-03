@@ -1,10 +1,13 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import { IDataObject, ILoadOptionsFunctions, NodeApiError, NodeOperationError } from 'n8n-workflow';
-
-import { OptionsWithUri } from 'request';
-
-import { flow } from 'lodash';
+import flow from 'lodash/flow';
+import type {
+	IExecuteFunctions,
+	IDataObject,
+	ILoadOptionsFunctions,
+	JsonObject,
+	IRequestOptions,
+	IHttpRequestMethods,
+} from 'n8n-workflow';
+import { NodeApiError, NodeOperationError } from 'n8n-workflow';
 
 import type { Zammad } from './types';
 
@@ -14,12 +17,12 @@ export function tolerateTrailingSlash(url: string) {
 
 export async function zammadApiRequest(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	body: IDataObject = {},
 	qs: IDataObject = {},
 ) {
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		method,
 		body,
 		qs,
@@ -30,9 +33,8 @@ export async function zammadApiRequest(
 	const authentication = this.getNodeParameter('authentication', 0) as 'basicAuth' | 'tokenAuth';
 
 	if (authentication === 'basicAuth') {
-		const credentials = (await this.getCredentials(
-			'zammadBasicAuthApi',
-		)) as Zammad.BasicAuthCredentials;
+		const credentials =
+			await this.getCredentials<Zammad.BasicAuthCredentials>('zammadBasicAuthApi');
 
 		const baseUrl = tolerateTrailingSlash(credentials.baseUrl);
 
@@ -45,9 +47,8 @@ export async function zammadApiRequest(
 
 		options.rejectUnauthorized = !credentials.allowUnauthorizedCerts;
 	} else {
-		const credentials = (await this.getCredentials(
-			'zammadTokenAuthApi',
-		)) as Zammad.TokenAuthCredentials;
+		const credentials =
+			await this.getCredentials<Zammad.TokenAuthCredentials>('zammadTokenAuthApi');
 
 		const baseUrl = tolerateTrailingSlash(credentials.baseUrl);
 
@@ -75,13 +76,13 @@ export async function zammadApiRequest(
 			error.error.error = 'An entity with this name already exists.';
 		}
 
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
 export async function zammadApiRequestAllItems(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	body: IDataObject = {},
 	qs: IDataObject = {},
@@ -97,7 +98,7 @@ export async function zammadApiRequestAllItems(
 
 	do {
 		responseData = await zammadApiRequest.call(this, method, endpoint, body, qs);
-		returnData.push(...responseData);
+		returnData.push(...(responseData as IDataObject[]));
 
 		if (limit && returnData.length > limit) {
 			return returnData.slice(0, limit);

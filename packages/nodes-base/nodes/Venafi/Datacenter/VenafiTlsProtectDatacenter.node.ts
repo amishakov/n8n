@@ -1,11 +1,14 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import { IDataObject, INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
-
-import { venafiApiRequest, venafiApiRequestAllItems } from './GenericFunctions';
+import type {
+	IExecuteFunctions,
+	IDataObject,
+	INodeExecutionData,
+	INodeType,
+	INodeTypeDescription,
+} from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
 
 import { certificateFields, certificateOperations } from './CertificateDescription';
-
+import { venafiApiRequest, venafiApiRequestAllItems } from './GenericFunctions';
 import { policyFields, policyOperations } from './PolicyDescription';
 
 export class VenafiTlsProtectDatacenter implements INodeType {
@@ -20,8 +23,8 @@ export class VenafiTlsProtectDatacenter implements INodeType {
 		defaults: {
 			name: 'Venafi TLS Protect Datacenter',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'venafiTlsProtectDatacenterApi',
@@ -133,8 +136,8 @@ export class VenafiTlsProtectDatacenter implements INodeType {
 						);
 
 						const binaryData = await this.helpers.prepareBinaryData(
-							Buffer.from(responseData.CertificateData, 'base64'),
-							responseData.Filename,
+							Buffer.from(responseData.CertificateData as BufferEncoding, 'base64'),
+							responseData.Filename as string,
 						);
 
 						responseData = {
@@ -233,9 +236,12 @@ export class VenafiTlsProtectDatacenter implements INodeType {
 				}
 
 				returnData.push(
-					...this.helpers.constructExecutionMetaData(this.helpers.returnJsonArray(responseData), {
-						itemData: { item: i },
-					}),
+					...this.helpers.constructExecutionMetaData(
+						this.helpers.returnJsonArray(responseData as IDataObject[]),
+						{
+							itemData: { item: i },
+						},
+					),
 				);
 			} catch (error) {
 				if (this.continueOnFail()) {

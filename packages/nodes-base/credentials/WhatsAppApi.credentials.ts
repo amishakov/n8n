@@ -1,4 +1,4 @@
-import {
+import type {
 	IAuthenticateGeneric,
 	ICredentialTestRequest,
 	ICredentialType,
@@ -22,7 +22,7 @@ export class WhatsAppApi implements ICredentialType {
 			required: true,
 		},
 		{
-			displayName: 'Bussiness Account ID',
+			displayName: 'Business Account ID',
 			type: 'string',
 			name: 'businessAccountId',
 			default: '',

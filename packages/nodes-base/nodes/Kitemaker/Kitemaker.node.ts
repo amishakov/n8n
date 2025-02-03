@@ -1,12 +1,12 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import type {
+	IDataObject,
+	IExecuteFunctions,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
-	NodeOperationError,
 } from 'n8n-workflow';
+import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
 import {
 	organizationOperations,
@@ -17,9 +17,9 @@ import {
 	workItemFields,
 	workItemOperations,
 } from './descriptions';
-
+import type { LoadOptions } from './GenericFunctions';
 import { createLoadOptions, kitemakerRequest, kitemakerRequestAllItems } from './GenericFunctions';
-
+import { createWorkItem, editWorkItem } from './mutations';
 import {
 	getAllSpaces,
 	getAllUsers,
@@ -33,13 +33,11 @@ import {
 	getWorkItems,
 } from './queries';
 
-import { createWorkItem, editWorkItem } from './mutations';
-
 export class Kitemaker implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Kitemaker',
 		name: 'kitemaker',
-		icon: 'file:kitemaker.svg',
+		icon: { light: 'file:kitemaker.svg', dark: 'file:kitemaker.dark.svg' },
 		group: ['input'],
 		version: 1,
 		subtitle: '={{$parameter["resource"] + ": " + $parameter["operation"]}}',
@@ -47,8 +45,8 @@ export class Kitemaker implements INodeType {
 		defaults: {
 			name: 'Kitemaker',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'kitemakerApi',
@@ -102,7 +100,7 @@ export class Kitemaker implements INodeType {
 					},
 				} = responseData;
 
-				return createLoadOptions(spaces[0].labels);
+				return createLoadOptions(spaces[0].labels as LoadOptions[]);
 			},
 
 			async getSpaces(this: ILoadOptionsFunctions) {
@@ -113,7 +111,7 @@ export class Kitemaker implements INodeType {
 					},
 				} = responseData;
 
-				return createLoadOptions(spaces);
+				return createLoadOptions(spaces as LoadOptions[]);
 			},
 
 			async getStatuses(this: ILoadOptionsFunctions) {
@@ -133,7 +131,7 @@ export class Kitemaker implements INodeType {
 				} = responseData;
 				const space = spaces.find((e: { [x: string]: string }) => e.id === spaceId);
 
-				return createLoadOptions(space.statuses);
+				return createLoadOptions(space.statuses as LoadOptions[]);
 			},
 
 			async getUsers(this: ILoadOptionsFunctions) {
@@ -144,7 +142,7 @@ export class Kitemaker implements INodeType {
 					},
 				} = responseData;
 
-				return createLoadOptions(users);
+				return createLoadOptions(users as LoadOptions[]);
 			},
 
 			async getWorkItems(this: ILoadOptionsFunctions) {
@@ -161,7 +159,7 @@ export class Kitemaker implements INodeType {
 					},
 				} = responseData;
 
-				return createLoadOptions(workItems);
+				return createLoadOptions(workItems as LoadOptions[]);
 			},
 		},
 	};
@@ -320,13 +318,13 @@ export class Kitemaker implements INodeType {
 			}
 
 			const executionData = this.helpers.constructExecutionMetaData(
-				this.helpers.returnJsonArray(responseData),
+				this.helpers.returnJsonArray(responseData as IDataObject),
 				{ itemData: { item: i } },
 			);
 
 			returnData.push(...executionData);
 		}
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

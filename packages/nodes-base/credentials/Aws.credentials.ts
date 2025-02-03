@@ -1,13 +1,15 @@
-import { Request, sign } from 'aws4';
-
-import {
+import type { Request } from 'aws4';
+import { sign } from 'aws4';
+import type {
 	ICredentialDataDecryptedObject,
 	ICredentialTestRequest,
 	ICredentialType,
 	IDataObject,
 	IHttpRequestOptions,
 	INodeProperties,
+	IRequestOptions,
 } from 'n8n-workflow';
+import { isObjectEmpty } from 'n8n-workflow';
 
 export const regions = [
 	{
@@ -122,7 +124,30 @@ export const regions = [
 	},
 ] as const;
 
-export type AWSRegion = typeof regions[number]['name'];
+export type AWSRegion = (typeof regions)[number]['name'];
+export type AwsCredentialsType = {
+	region: AWSRegion;
+	accessKeyId: string;
+	secretAccessKey: string;
+	temporaryCredentials: boolean;
+	customEndpoints: boolean;
+	sessionToken?: string;
+	rekognitionEndpoint?: string;
+	lambdaEndpoint?: string;
+	snsEndpoint?: string;
+	sesEndpoint?: string;
+	sqsEndpoint?: string;
+	s3Endpoint?: string;
+	ssmEndpoint?: string;
+};
+
+// Some AWS services are global and don't have a region
+// https://docs.aws.amazon.com/general/latest/gr/rande.html#global-endpoints
+// Example: iam.amazonaws.com (global), s3.us-east-1.amazonaws.com (regional)
+function parseAwsUrl(url: URL): { region: AWSRegion | null; service: string } {
+	const [service, region] = url.hostname.replace('amazonaws.com', '').split('.');
+	return { service, region: region as AWSRegion };
+}
 
 export class Aws implements ICredentialType {
 	name = 'aws';
@@ -131,7 +156,7 @@ export class Aws implements ICredentialType {
 
 	documentationUrl = 'aws';
 
-	icon = 'file:AWS.svg';
+	icon = { light: 'file:icons/AWS.svg', dark: 'file:icons/AWS.dark.svg' } as const;
 
 	properties: INodeProperties[] = [
 		{
@@ -162,7 +187,6 @@ export class Aws implements ICredentialType {
 		{
 			displayName: 'Temporary Security Credentials',
 			name: 'temporaryCredentials',
-			// eslint-disable-next-line n8n-nodes-base/node-param-description-boolean-without-whether
 			description: 'Support for temporary credentials from AWS STS',
 			type: 'boolean',
 			default: false,
@@ -271,55 +295,103 @@ export class Aws implements ICredentialType {
 			default: '',
 			placeholder: 'https://s3.{region}.amazonaws.com',
 		},
+		{
+			displayName: 'SSM Endpoint',
+			name: 'ssmEndpoint',
+			description: 'Endpoint for AWS Systems Manager (SSM)',
+			type: 'string',
+			displayOptions: {
+				show: {
+					customEndpoints: [true],
+				},
+			},
+			default: '',
+			placeholder: 'https://ssm.{region}.amazonaws.com',
+		},
 	];
 
 	async authenticate(
-		credentials: ICredentialDataDecryptedObject,
+		rawCredentials: ICredentialDataDecryptedObject,
 		requestOptions: IHttpRequestOptions,
 	): Promise<IHttpRequestOptions> {
+		const credentials = rawCredentials as AwsCredentialsType;
 		let endpoint: URL;
 		let service = requestOptions.qs?.service as string;
-		let path = requestOptions.qs?.path;
+		let path = (requestOptions.qs?.path as string) ?? '';
 		const method = requestOptions.method;
 		let body = requestOptions.body;
+
 		let region = credentials.region;
-		const query = requestOptions.qs?.query as IDataObject;
-		if (!requestOptions.baseURL && !requestOptions.url) {
-			let endpointString: string;
-			if (service === 'lambda' && credentials.lambdaEndpoint) {
-				endpointString = credentials.lambdaEndpoint as string;
-			} else if (service === 'sns' && credentials.snsEndpoint) {
-				endpointString = credentials.snsEndpoint as string;
-			} else if (service === 'sqs' && credentials.sqsEndpoint) {
-				endpointString = credentials.sqsEndpoint as string;
-			} else if (service === 's3' && credentials.s3Endpoint) {
-				endpointString = credentials.s3Endpoint as string;
-			} else if (service === 'ses' && credentials.sesEndpoint) {
-				endpointString = credentials.sesEndpoint as string;
-			} else if (service === 'rekognition' && credentials.rekognitionEndpoint) {
-				endpointString = credentials.rekognitionEndpoint as string;
-			} else if (service === 'sqs' && credentials.sqsEndpoint) {
-				endpointString = credentials.sqsEndpoint as string;
-			} else if (service) {
-				endpointString = `https://${service}.${credentials.region}.amazonaws.com`;
-			}
-			endpoint = new URL(
-				endpointString!.replace('{region}', credentials.region as string) + (path as string),
-			);
-		} else {
-			// If no endpoint is set, we try to decompose the path and use the default endpoint
-			const customUrl = new URL(`${requestOptions.baseURL!}${requestOptions.url}${path ?? ''}`);
-			service = customUrl.hostname.split('.')[0];
-			region = customUrl.hostname.split('.')[1];
+		if (requestOptions.qs?._region) {
+			region = requestOptions.qs._region as AWSRegion;
+			delete requestOptions.qs._region;
+		}
+
+		let query = requestOptions.qs?.query as IDataObject;
+		// ! Workaround as we still use the IRequestOptions interface which uses uri instead of url
+		// ! To change when we replace the interface with IHttpRequestOptions
+		const requestWithUri = requestOptions as unknown as IRequestOptions;
+		if (requestWithUri.uri) {
+			requestOptions.url = requestWithUri.uri;
+			endpoint = new URL(requestOptions.url);
 			if (service === 'sts') {
 				try {
-					customUrl.searchParams.set('Action', 'GetCallerIdentity');
-					customUrl.searchParams.set('Version', '2011-06-15');
+					if (requestWithUri.qs?.Action !== 'GetCallerIdentity') {
+						query = requestWithUri.qs as IDataObject;
+					} else {
+						endpoint.searchParams.set('Action', 'GetCallerIdentity');
+						endpoint.searchParams.set('Version', '2011-06-15');
+					}
 				} catch (err) {
-					console.log(err);
+					console.error(err);
 				}
 			}
-			endpoint = customUrl;
+			const parsed = parseAwsUrl(endpoint);
+			service = parsed.service;
+			if (parsed.region) {
+				region = parsed.region;
+			}
+		} else {
+			if (!requestOptions.baseURL && !requestOptions.url) {
+				let endpointString: string;
+				if (service === 'lambda' && credentials.lambdaEndpoint) {
+					endpointString = credentials.lambdaEndpoint;
+				} else if (service === 'sns' && credentials.snsEndpoint) {
+					endpointString = credentials.snsEndpoint;
+				} else if (service === 'sqs' && credentials.sqsEndpoint) {
+					endpointString = credentials.sqsEndpoint;
+				} else if (service === 's3' && credentials.s3Endpoint) {
+					endpointString = credentials.s3Endpoint;
+				} else if (service === 'ses' && credentials.sesEndpoint) {
+					endpointString = credentials.sesEndpoint;
+				} else if (service === 'rekognition' && credentials.rekognitionEndpoint) {
+					endpointString = credentials.rekognitionEndpoint;
+				} else if (service === 'sqs' && credentials.sqsEndpoint) {
+					endpointString = credentials.sqsEndpoint;
+				} else if (service) {
+					endpointString = `https://${service}.${region}.amazonaws.com`;
+				} else if (service === 'ssm' && credentials.ssmEndpoint) {
+					endpointString = credentials.ssmEndpoint;
+				}
+				endpoint = new URL(endpointString!.replace('{region}', region) + path);
+			} else {
+				// If no endpoint is set, we try to decompose the path and use the default endpoint
+				const customUrl = new URL(`${requestOptions.baseURL!}${requestOptions.url}${path}`);
+				const parsed = parseAwsUrl(customUrl);
+				service = parsed.service;
+				if (parsed.region) {
+					region = parsed.region;
+				}
+				if (service === 'sts') {
+					try {
+						customUrl.searchParams.set('Action', 'GetCallerIdentity');
+						customUrl.searchParams.set('Version', '2011-06-15');
+					} catch (err) {
+						console.error(err);
+					}
+				}
+				endpoint = customUrl;
+			}
 		}
 
 		if (query && Object.keys(query).length !== 0) {
@@ -328,7 +400,7 @@ export class Aws implements ICredentialType {
 			});
 		}
 
-		if (body && Object.keys(body).length === 0) {
+		if (body && typeof body === 'object' && isObjectEmpty(body)) {
 			body = '';
 		}
 
@@ -354,7 +426,7 @@ export class Aws implements ICredentialType {
 		try {
 			sign(signOpts, securityHeaders);
 		} catch (err) {
-			console.log(err);
+			console.error(err);
 		}
 		const options: IHttpRequestOptions = {
 			...requestOptions,

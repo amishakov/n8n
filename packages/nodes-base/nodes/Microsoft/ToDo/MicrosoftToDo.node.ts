@@ -1,24 +1,19 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import moment from 'moment-timezone';
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
-	NodeOperationError,
 } from 'n8n-workflow';
+import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
 import { microsoftApiRequest, microsoftApiRequestAllItems } from './GenericFunctions';
-
 import { linkedResourceFields, linkedResourceOperations } from './LinkedResourceDescription';
-
-import { taskFields, taskOperations } from './TaskDescription';
-
 import { listFields, listOperations } from './ListDescription';
-
-import moment from 'moment-timezone';
+import { taskFields, taskOperations } from './TaskDescription';
 
 export class MicrosoftToDo implements INodeType {
 	description: INodeTypeDescription = {
@@ -32,8 +27,8 @@ export class MicrosoftToDo implements INodeType {
 		defaults: {
 			name: 'Microsoft To Do',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'microsoftToDoOAuth2Api',
@@ -73,7 +68,7 @@ export class MicrosoftToDo implements INodeType {
 
 	methods = {
 		loadOptions: {
-			// Get all the team's channels to display them to user so that he can
+			// Get all the team's channels to display them to user so that they can
 			// select them easily
 			async getTaskLists(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -222,6 +217,14 @@ export class MicrosoftToDo implements INodeType {
 							};
 						}
 
+						if (body.reminderDateTime) {
+							body.reminderDateTime = {
+								dateTime: moment.tz(body.reminderDateTime, timezone).format(),
+								timeZone: timezone,
+							};
+							body.isReminderOn = true;
+						}
+
 						responseData = await microsoftApiRequest.call(
 							this,
 							'POST',
@@ -303,6 +306,16 @@ export class MicrosoftToDo implements INodeType {
 								dateTime: moment.tz(body.dueDateTime, timezone).format(),
 								timeZone: timezone,
 							};
+						}
+
+						if (body.reminderDateTime) {
+							body.reminderDateTime = {
+								dateTime: moment.tz(body.reminderDateTime, timezone).format(),
+								timeZone: timezone,
+							};
+							body.isReminderOn = true;
+						} else {
+							body.isReminderOn = false;
 						}
 
 						responseData = await microsoftApiRequest.call(
@@ -410,12 +423,12 @@ export class MicrosoftToDo implements INodeType {
 			}
 
 			const executionData = this.helpers.constructExecutionMetaData(
-				this.helpers.returnJsonArray(responseData),
+				this.helpers.returnJsonArray(responseData as IDataObject),
 				{ itemData: { item: i } },
 			);
 
 			returnData.push(...executionData);
 		}
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

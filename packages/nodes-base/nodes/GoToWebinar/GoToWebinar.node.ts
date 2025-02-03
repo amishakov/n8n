@@ -1,13 +1,15 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import isEmpty from 'lodash/isEmpty';
+import omit from 'lodash/omit';
+import moment from 'moment-timezone';
+import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
-	NodeOperationError,
 } from 'n8n-workflow';
 
 import {
@@ -24,7 +26,6 @@ import {
 	webinarFields,
 	webinarOperations,
 } from './descriptions';
-
 import {
 	goToWebinarApiRequest,
 	goToWebinarApiRequestAllItems,
@@ -35,10 +36,6 @@ import {
 	loadWebinars,
 	loadWebinarSessions,
 } from './GenericFunctions';
-
-import { isEmpty, omit } from 'lodash';
-
-import moment from 'moment-timezone';
 
 export class GoToWebinar implements INodeType {
 	description: INodeTypeDescription = {
@@ -52,8 +49,8 @@ export class GoToWebinar implements INodeType {
 		defaults: {
 			name: 'GoToWebinar',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'goToWebinarOAuth2Api',
@@ -112,15 +109,15 @@ export class GoToWebinar implements INodeType {
 	methods = {
 		loadOptions: {
 			async getWebinars(this: ILoadOptionsFunctions) {
-				return loadWebinars.call(this);
+				return await loadWebinars.call(this);
 			},
 			async getAnswers(this: ILoadOptionsFunctions) {
-				return loadAnswers.call(this);
+				return await loadAnswers.call(this);
 			},
 			async getWebinarSessions(this: ILoadOptionsFunctions) {
-				return loadWebinarSessions.call(this);
+				return await loadWebinarSessions.call(this);
 			},
-			// Get all the timezones to display them to user so that he can
+			// Get all the timezones to display them to user so that they can
 			// select them easily
 			async getTimezones(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -137,12 +134,12 @@ export class GoToWebinar implements INodeType {
 			async getRegistranSimpleQuestions(
 				this: ILoadOptionsFunctions,
 			): Promise<INodePropertyOptions[]> {
-				return loadRegistranSimpleQuestions.call(this);
+				return await loadRegistranSimpleQuestions.call(this);
 			},
 			async getRegistranMultiChoiceQuestions(
 				this: ILoadOptionsFunctions,
 			): Promise<INodePropertyOptions[]> {
-				return loadRegistranMultiChoiceQuestions.call(this);
+				return await loadRegistranMultiChoiceQuestions.call(this);
 			},
 		},
 	};
@@ -156,9 +153,9 @@ export class GoToWebinar implements INodeType {
 		let responseData;
 		const returnData: INodeExecutionData[] = [];
 
-		const { oauthTokenData } = (await this.getCredentials('goToWebinarOAuth2Api')) as {
+		const { oauthTokenData } = await this.getCredentials<{
 			oauthTokenData: { account_key: string; organizer_key: string };
-		};
+		}>('goToWebinarOAuth2Api');
 
 		const accountKey = oauthTokenData.account_key;
 		const organizerKey = oauthTokenData.organizer_key;
@@ -645,13 +642,13 @@ export class GoToWebinar implements INodeType {
 			}
 
 			const executionData = this.helpers.constructExecutionMetaData(
-				this.helpers.returnJsonArray(responseData),
+				this.helpers.returnJsonArray(responseData as IDataObject[]),
 				{ itemData: { item: i } },
 			);
 
 			returnData.push(...executionData);
 		}
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

@@ -1,13 +1,11 @@
-import { OptionsWithUri } from 'request';
-
-import {
+import type {
+	IDataObject,
 	IExecuteFunctions,
-	IExecuteSingleFunctions,
 	IHookFunctions,
 	ILoadOptionsFunctions,
-} from 'n8n-core';
-
-import { IDataObject } from 'n8n-workflow';
+	IHttpRequestMethods,
+	IRequestOptions,
+} from 'n8n-workflow';
 
 function getUri(resource: string, subdomain: string) {
 	if (resource.includes('webhooks')) {
@@ -18,30 +16,30 @@ function getUri(resource: string, subdomain: string) {
 }
 
 export async function zendeskApiRequest(
-	this: IHookFunctions | IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions,
-	method: string,
+	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
+	method: IHttpRequestMethods,
 	resource: string,
 
 	body: any = {},
 	qs: IDataObject = {},
 	uri?: string,
 	option: IDataObject = {},
-): Promise<any> {
+) {
 	const authenticationMethod = this.getNodeParameter('authentication', 0);
 
 	let credentials;
 
 	if (authenticationMethod === 'apiToken') {
-		credentials = (await this.getCredentials('zendeskApi')) as { subdomain: string };
+		credentials = await this.getCredentials<{ subdomain: string }>('zendeskApi');
 	} else {
-		credentials = (await this.getCredentials('zendeskOAuth2Api')) as { subdomain: string };
+		credentials = await this.getCredentials<{ subdomain: string }>('zendeskOAuth2Api');
 	}
 
-	let options: OptionsWithUri = {
+	let options: IRequestOptions = {
 		method,
 		qs,
 		body,
-		uri: uri ?? getUri(resource, credentials.subdomain),
+		uri: uri || getUri(resource, credentials.subdomain),
 		json: true,
 		qsStringifyOptions: {
 			arrayFormat: 'brackets',
@@ -49,13 +47,13 @@ export async function zendeskApiRequest(
 	};
 
 	options = Object.assign({}, options, option);
-	if (Object.keys(options.body).length === 0) {
+	if (Object.keys(options.body as IDataObject).length === 0) {
 		delete options.body;
 	}
 
 	const credentialType = authenticationMethod === 'apiToken' ? 'zendeskApi' : 'zendeskOAuth2Api';
 
-	return this.helpers.requestWithAuthentication.call(this, credentialType, options);
+	return await this.helpers.requestWithAuthentication.call(this, credentialType, options);
 }
 
 /**
@@ -65,7 +63,7 @@ export async function zendeskApiRequest(
 export async function zendeskApiRequestAllItems(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
 	propertyName: string,
-	method: string,
+	method: IHttpRequestMethods,
 	resource: string,
 
 	body: any = {},
@@ -80,8 +78,9 @@ export async function zendeskApiRequestAllItems(
 	do {
 		responseData = await zendeskApiRequest.call(this, method, resource, body, query, uri);
 		uri = responseData.next_page;
-		returnData.push.apply(returnData, responseData[propertyName]);
-		if (query.limit && query.limit <= returnData.length) {
+		returnData.push.apply(returnData, responseData[propertyName] as IDataObject[]);
+		const limit = query.limit as number | undefined;
+		if (limit && limit <= returnData.length) {
 			return returnData;
 		}
 	} while (responseData.next_page !== undefined && responseData.next_page !== null);

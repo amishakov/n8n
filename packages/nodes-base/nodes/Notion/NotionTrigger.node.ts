@@ -1,24 +1,33 @@
-import { IPollFunctions } from 'n8n-core';
+import moment from 'moment-timezone';
+import {
+	type IPollFunctions,
+	type IDataObject,
+	type INodeExecutionData,
+	type INodeType,
+	type INodeTypeDescription,
+	NodeConnectionType,
+} from 'n8n-workflow';
 
-import { IDataObject, INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
-
-import { notionApiRequest, simplifyObjects } from './GenericFunctions';
-
-import moment from 'moment';
-import { getDatabases } from './SearchFunctions';
+import {
+	databaseUrlExtractionRegexp,
+	databaseUrlValidationRegexp,
+	idExtractionRegexp,
+	idValidationRegexp,
+} from './shared/constants';
+import { notionApiRequest, simplifyObjects } from './shared/GenericFunctions';
+import { listSearch } from './shared/methods';
 
 export class NotionTrigger implements INodeType {
 	description: INodeTypeDescription = {
-		// eslint-disable-next-line n8n-nodes-base/node-class-description-display-name-unsuffixed-trigger-node
-		displayName: 'Notion Trigger (Beta)',
+		displayName: 'Notion Trigger',
 		name: 'notionTrigger',
-		icon: 'file:notion.svg',
+		icon: { light: 'file:notion.svg', dark: 'file:notion.dark.svg' },
 		group: ['trigger'],
 		version: 1,
 		description: 'Starts the workflow when Notion events occur',
 		subtitle: '={{$parameter["event"]}}',
 		defaults: {
-			name: 'Notion Trigger (Beta)',
+			name: 'Notion Trigger',
 		},
 		credentials: [
 			{
@@ -28,7 +37,7 @@ export class NotionTrigger implements INodeType {
 		],
 		polling: true,
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		properties: [
 			{
 				displayName: 'Event',
@@ -49,7 +58,7 @@ export class NotionTrigger implements INodeType {
 			},
 			{
 				displayName:
-					'In Notion, make sure you <a href="https://www.notion.so/help/add-and-manage-connections-with-the-api#add-connections-to-pages" target="_blank">share your database with your integration</a> . Otherwise it won\'t be accessible, or listed here.',
+					'In Notion, make sure to <a href="https://www.notion.so/help/add-and-manage-connections-with-the-api" target="_blank">add your connection</a> to the pages you want to access.',
 				name: 'notionNotice',
 				type: 'notice',
 				default: '',
@@ -81,16 +90,14 @@ export class NotionTrigger implements INodeType {
 							{
 								type: 'regex',
 								properties: {
-									regex:
-										'(?:https|http)://www.notion.so/(?:[a-z0-9-]{2,}/)?([0-9a-f]{8}[0-9a-f]{4}4[0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}).*',
+									regex: databaseUrlValidationRegexp,
 									errorMessage: 'Not a valid Notion Database URL',
 								},
 							},
 						],
 						extractValue: {
 							type: 'regex',
-							regex:
-								'(?:https|http)://www.notion.so/(?:[a-z0-9-]{2,}/)?([0-9a-f]{8}[0-9a-f]{4}4[0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12})',
+							regex: databaseUrlExtractionRegexp,
 						},
 					},
 					{
@@ -102,15 +109,14 @@ export class NotionTrigger implements INodeType {
 							{
 								type: 'regex',
 								properties: {
-									regex:
-										'^(([0-9a-f]{8}[0-9a-f]{4}4[0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12})|([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}))[ \t]*',
+									regex: idValidationRegexp,
 									errorMessage: 'Not a valid Notion Database ID',
 								},
 							},
 						],
 						extractValue: {
 							type: 'regex',
-							regex: '^([0-9a-f]{8}-?[0-9a-f]{4}-?4[0-9a-f]{3}-?[89ab][0-9a-f]{3}-?[0-9a-f]{12})',
+							regex: idExtractionRegexp,
 						},
 						url: '=https://www.notion.so/{{$value.replace(/-/g, "")}}',
 					},
@@ -139,9 +145,7 @@ export class NotionTrigger implements INodeType {
 	};
 
 	methods = {
-		listSearch: {
-			getDatabases,
-		},
+		listSearch,
 	};
 
 	async poll(this: IPollFunctions): Promise<INodeExecutionData[][] | null> {
@@ -211,7 +215,7 @@ export class NotionTrigger implements INodeType {
 		}
 
 		// if something changed after the last check
-		if (Array.isArray(data) && data.length && Object.keys(data[0]).length !== 0) {
+		if (Array.isArray(data) && data.length && Object.keys(data[0] as IDataObject).length !== 0) {
 			do {
 				body.page_size = 10;
 				const { results, has_more, next_cursor } = await notionApiRequest.call(
@@ -223,7 +227,7 @@ export class NotionTrigger implements INodeType {
 					'',
 					option,
 				);
-				records.push(...results);
+				records.push(...(results as IDataObject[]));
 				hasMore = has_more;
 				if (next_cursor !== null) {
 					body.start_cursor = next_cursor;

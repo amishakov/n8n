@@ -1,13 +1,11 @@
-import { IExecuteFunctions } from 'n8n-core';
+import type { IExecuteFunctions, INodeExecutionData, JsonObject } from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
 
-import { INodeExecutionData, NodeApiError } from 'n8n-workflow';
-
-import * as customer from './customer';
-import * as ticket from './ticket';
 import * as contact from './contact';
+import * as customer from './customer';
+import type { SyncroMsp } from './Interfaces';
 import * as rmm from './rmm';
-
-import { SyncroMsp } from './Interfaces';
+import * as ticket from './ticket';
 
 export async function router(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 	const items = this.getInputData();
@@ -50,10 +48,10 @@ export async function router(this: IExecuteFunctions): Promise<INodeExecutionDat
 				);
 				operationResult.push(...executionErrorData);
 			} else {
-				throw new NodeApiError(this.getNode(), err, { itemIndex: i });
+				throw new NodeApiError(this.getNode(), err as JsonObject, { itemIndex: i });
 			}
 		}
 	}
 
-	return this.prepareOutputData(operationResult);
+	return [operationResult];
 }

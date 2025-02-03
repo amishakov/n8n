@@ -1,21 +1,20 @@
-import { OptionsWithUri } from 'request';
-
-import {
+import type {
+	IDataObject,
 	IExecuteFunctions,
-	IExecuteSingleFunctions,
 	IHookFunctions,
 	ILoadOptionsFunctions,
-} from 'n8n-core';
+	JsonObject,
+	IRequestOptions,
+	IHttpRequestMethods,
+} from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
 
-import { IDataObject, NodeApiError } from 'n8n-workflow';
-
-import { IContactUpdate } from './ContactInterface';
-
-import { IFilterRules, ISearchConditions } from './FilterInterface';
+import type { IContactUpdate } from './ContactInterface';
+import type { IFilterRules, ISearchConditions } from './FilterInterface';
 
 export async function agileCrmApiRequest(
-	this: IHookFunctions | IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions,
-	method: string,
+	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	body: any = {},
 	query: IDataObject = {},
@@ -23,7 +22,7 @@ export async function agileCrmApiRequest(
 	sendAsForm?: boolean,
 ): Promise<any> {
 	const credentials = await this.getCredentials('agileCrmApi');
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		method,
 		headers: {
 			Accept: 'application/json',
@@ -33,7 +32,7 @@ export async function agileCrmApiRequest(
 			password: credentials.apiKey as string,
 		},
 		qs: query,
-		uri: uri ?? `https://${credentials.subdomain}.agilecrm.com/dev/${endpoint}`,
+		uri: uri || `https://${credentials.subdomain}.agilecrm.com/dev/${endpoint}`,
 		json: true,
 	};
 
@@ -50,13 +49,13 @@ export async function agileCrmApiRequest(
 	try {
 		return await this.helpers.request(options);
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
 export async function agileCrmApiRequestAllItems(
 	this: IHookFunctions | ILoadOptionsFunctions | IExecuteFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	resource: string,
 	body: any = {},
 	query: IDataObject = {},
@@ -78,7 +77,7 @@ export async function agileCrmApiRequestAllItems(
 			sendAsForm,
 		);
 		if (responseData.length !== 0) {
-			returnData.push.apply(returnData, responseData);
+			returnData.push.apply(returnData, responseData as IDataObject[]);
 			if (sendAsForm) {
 				body.cursor = responseData[responseData.length - 1].cursor;
 			} else {
@@ -94,16 +93,16 @@ export async function agileCrmApiRequestAllItems(
 }
 
 export async function agileCrmApiRequestUpdate(
-	this: IHookFunctions | IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions,
-	method = 'PUT',
-	endpoint?: string,
+	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
+	method: IHttpRequestMethods = 'PUT',
+	_endpoint?: string,
 	body: any = {},
 	_query: IDataObject = {},
 	uri?: string,
 ): Promise<any> {
 	const credentials = await this.getCredentials('agileCrmApi');
 	const baseUri = `https://${credentials.subdomain}.agilecrm.com/dev/`;
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		method,
 		headers: {
 			Accept: 'application/json',
@@ -113,7 +112,7 @@ export async function agileCrmApiRequestUpdate(
 			username: credentials.email as string,
 			password: credentials.apiKey as string,
 		},
-		uri: uri ?? baseUri,
+		uri: uri || baseUri,
 		json: true,
 	};
 
@@ -168,9 +167,9 @@ export async function agileCrmApiRequestUpdate(
 		return lastSuccesfulUpdateReturn;
 	} catch (error) {
 		if (successfulUpdates.length === 0) {
-			throw new NodeApiError(this.getNode(), error);
+			throw new NodeApiError(this.getNode(), error as JsonObject);
 		} else {
-			throw new NodeApiError(this.getNode(), error, {
+			throw new NodeApiError(this.getNode(), error as JsonObject, {
 				message: `Not all properties updated. Updated properties: ${successfulUpdates.join(', ')}`,
 				description: error.message,
 				httpCode: error.statusCode,

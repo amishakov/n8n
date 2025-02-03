@@ -1,7 +1,5 @@
-/* eslint-disable n8n-nodes-base/node-filename-against-convention */
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
@@ -11,10 +9,11 @@ import {
 	INodeTypeBaseDescription,
 	INodeTypeDescription,
 } from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
 
+import type { OperationType } from './Service';
+import { TodoistService } from './Service';
 import { todoistApiRequest } from '../GenericFunctions';
-
-import { OperationType, TodoistService } from './Service';
 
 // interface IBodyCreateTask {
 // 	content?: string;
@@ -42,8 +41,8 @@ const versionDescription: INodeTypeDescription = {
 	defaults: {
 		name: 'Todoist',
 	},
-	inputs: ['main'],
-	outputs: ['main'],
+	inputs: [NodeConnectionType.Main],
+	outputs: [NodeConnectionType.Main],
 	credentials: [
 		{
 			name: 'todoistApi',
@@ -225,7 +224,7 @@ const versionDescription: INodeTypeDescription = {
 			},
 			default: '',
 			description:
-				'Section to which you want move the task. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+				'Section to which you want move the task. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 		},
 		{
 			displayName: 'Label Names or IDs',
@@ -242,7 +241,7 @@ const versionDescription: INodeTypeDescription = {
 			},
 			default: [],
 			description:
-				'Optional labels that will be assigned to a created task. Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+				'Optional labels that will be assigned to a created task. Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 		},
 		{
 			displayName: 'Content',
@@ -279,7 +278,7 @@ const versionDescription: INodeTypeDescription = {
 			displayName: 'Additional Fields',
 			name: 'options',
 			type: 'collection',
-			placeholder: 'Add Option',
+			placeholder: 'Add option',
 			default: {},
 			displayOptions: {
 				show: {
@@ -328,7 +327,7 @@ const versionDescription: INodeTypeDescription = {
 					},
 					default: {},
 					description:
-						'The parent task you want to operate on. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+						'The parent task you want to operate on. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 				},
 				{
 					displayName: 'Priority',
@@ -351,7 +350,7 @@ const versionDescription: INodeTypeDescription = {
 					},
 					default: {},
 					description:
-						'The section you want to operate on. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+						'The section you want to operate on. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 				},
 			],
 		},
@@ -390,7 +389,7 @@ const versionDescription: INodeTypeDescription = {
 			displayName: 'Filters',
 			name: 'filters',
 			type: 'collection',
-			placeholder: 'Add Option',
+			placeholder: 'Add option',
 			default: {},
 			displayOptions: {
 				show: {
@@ -423,7 +422,7 @@ const versionDescription: INodeTypeDescription = {
 					},
 					default: {},
 					description:
-						'Filter tasks by label. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+						'Filter tasks by label. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 				},
 				{
 					displayName: 'Lang',
@@ -443,7 +442,7 @@ const versionDescription: INodeTypeDescription = {
 					},
 					default: '',
 					description:
-						'Filter tasks by parent task ID. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+						'Filter tasks by parent task ID. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 				},
 				{
 					displayName: 'Project Name or ID',
@@ -454,7 +453,7 @@ const versionDescription: INodeTypeDescription = {
 					},
 					default: '',
 					description:
-						'Filter tasks by project ID. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+						'Filter tasks by project ID. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 				},
 				{
 					displayName: 'Section Name or ID',
@@ -466,7 +465,7 @@ const versionDescription: INodeTypeDescription = {
 					},
 					default: '',
 					description:
-						'Filter tasks by section ID. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+						'Filter tasks by section ID. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 				},
 			],
 		},
@@ -533,7 +532,7 @@ const versionDescription: INodeTypeDescription = {
 					name: 'labels',
 					type: 'multiOptions',
 					description:
-						'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>',
+						'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 					typeOptions: {
 						loadOptionsMethod: 'getLabels',
 					},
@@ -587,7 +586,7 @@ export class TodoistV1 implements INodeType {
 			},
 		},
 		loadOptions: {
-			// Get all the available projects to display them to user so that he can
+			// Get all the available projects to display them to user so that they can
 			// select them easily
 			async getProjects(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -606,7 +605,7 @@ export class TodoistV1 implements INodeType {
 			},
 
 			// Get all the available sections in the selected project, to display them
-			// to user so that he can select one easily
+			// to user so that they can select one easily
 			async getSections(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
 
@@ -676,7 +675,7 @@ export class TodoistV1 implements INodeType {
 				return returnData;
 			},
 
-			// Get all the available labels to display them to user so that he can
+			// Get all the available labels to display them to user so that they can
 			// select them easily
 			async getLabels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -703,15 +702,11 @@ export class TodoistV1 implements INodeType {
 		const service = new TodoistService();
 		let responseData;
 		const resource = this.getNodeParameter('resource', 0);
-		const operation = this.getNodeParameter('operation', 0);
+		const operation = this.getNodeParameter('operation', 0) as OperationType;
 		for (let i = 0; i < length; i++) {
 			try {
 				if (resource === 'task') {
-					responseData = await service.execute(
-						this,
-						OperationType[operation as keyof typeof OperationType],
-						i,
-					);
+					responseData = await service.execute(this, operation, i);
 				}
 				if (Array.isArray(responseData?.data)) {
 					returnData.push.apply(returnData, responseData?.data as IDataObject[]);

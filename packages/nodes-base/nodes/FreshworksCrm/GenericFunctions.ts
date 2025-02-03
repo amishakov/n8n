@@ -1,28 +1,31 @@
-import { IExecuteFunctions } from 'n8n-core';
+import omit from 'lodash/omit';
+import type {
+	IExecuteFunctions,
+	IDataObject,
+	ILoadOptionsFunctions,
+	JsonObject,
+	IHttpRequestMethods,
+	IRequestOptions,
+} from 'n8n-workflow';
+import { NodeApiError, NodeOperationError } from 'n8n-workflow';
 
-import { IDataObject, ILoadOptionsFunctions, NodeApiError, NodeOperationError } from 'n8n-workflow';
-
-import { OptionsWithUri } from 'request';
-
-import {
+import type {
 	FreshworksConfigResponse,
 	FreshworksCrmApiCredentials,
 	SalesAccounts,
 	ViewsResponse,
 } from './types';
 
-import { omit } from 'lodash';
-
 export async function freshworksCrmApiRequest(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	body: IDataObject = {},
 	qs: IDataObject = {},
 ) {
-	const { domain } = (await this.getCredentials('freshworksCrmApi')) as FreshworksCrmApiCredentials;
+	const { domain } = await this.getCredentials<FreshworksCrmApiCredentials>('freshworksCrmApi');
 
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		method,
 		body,
 		qs,
@@ -41,7 +44,7 @@ export async function freshworksCrmApiRequest(
 		const credentialsType = 'freshworksCrmApi';
 		return await this.helpers.requestWithAuthentication.call(this, credentialsType, options);
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
@@ -77,7 +80,7 @@ export async function getAllItemsViewId(
 
 export async function freshworksCrmApiRequestAllItems(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	body: IDataObject = {},
 	qs: IDataObject = {},
@@ -89,8 +92,8 @@ export async function freshworksCrmApiRequestAllItems(
 
 	do {
 		response = await freshworksCrmApiRequest.call(this, method, endpoint, body, qs);
-		const key = Object.keys(response)[0];
-		returnData.push(...response[key]);
+		const key = Object.keys(response as IDataObject)[0];
+		returnData.push(...(response[key] as IDataObject[]));
 		qs.page++;
 	} while (response.meta.total_pages && qs.page <= response.meta.total_pages);
 
@@ -99,7 +102,7 @@ export async function freshworksCrmApiRequestAllItems(
 
 export async function handleListing(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	body: IDataObject = {},
 	qs: IDataObject = {},
@@ -107,7 +110,7 @@ export async function handleListing(
 	const returnAll = this.getNodeParameter('returnAll', 0);
 
 	if (returnAll) {
-		return freshworksCrmApiRequestAllItems.call(this, method, endpoint, body, qs);
+		return await freshworksCrmApiRequestAllItems.call(this, method, endpoint, body, qs);
 	}
 
 	const responseData = await freshworksCrmApiRequestAllItems.call(this, method, endpoint, body, qs);

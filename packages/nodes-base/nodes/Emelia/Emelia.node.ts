@@ -1,20 +1,17 @@
-import { IExecuteFunctions } from 'n8n-core';
-
+import isEmpty from 'lodash/isEmpty';
 import {
-	IDataObject,
-	ILoadOptionsFunctions,
-	INodeExecutionData,
-	INodeType,
-	INodeTypeDescription,
+	type IExecuteFunctions,
+	type IDataObject,
+	type ILoadOptionsFunctions,
+	type INodeExecutionData,
+	type INodeType,
+	type INodeTypeDescription,
+	NodeConnectionType,
 } from 'n8n-workflow';
 
-import { emeliaApiTest, emeliaGraphqlRequest, loadResource } from './GenericFunctions';
-
 import { campaignFields, campaignOperations } from './CampaignDescription';
-
 import { contactListFields, contactListOperations } from './ContactListDescription';
-
-import { isEmpty } from 'lodash';
+import { emeliaApiTest, emeliaGraphqlRequest, loadResource } from './GenericFunctions';
 
 export class Emelia implements INodeType {
 	description: INodeTypeDescription = {
@@ -28,8 +25,8 @@ export class Emelia implements INodeType {
 		defaults: {
 			name: 'Emelia',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'emeliaApi',
@@ -70,11 +67,11 @@ export class Emelia implements INodeType {
 
 		loadOptions: {
 			async getCampaigns(this: ILoadOptionsFunctions) {
-				return loadResource.call(this, 'campaign');
+				return await loadResource.call(this, 'campaign');
 			},
 
 			async getContactLists(this: ILoadOptionsFunctions) {
-				return loadResource.call(this, 'contactList');
+				return await loadResource.call(this, 'contactList');
 			},
 		},
 	};
@@ -165,7 +162,7 @@ export class Emelia implements INodeType {
 						});
 
 						const executionData = this.helpers.constructExecutionMetaData(
-							this.helpers.returnJsonArray(responseData.data.createCampaign),
+							this.helpers.returnJsonArray(responseData.data.createCampaign as IDataObject),
 							{ itemData: { item: i } },
 						);
 						returnData.push(...executionData);
@@ -210,7 +207,7 @@ export class Emelia implements INodeType {
 						});
 
 						const executionData = this.helpers.constructExecutionMetaData(
-							this.helpers.returnJsonArray(responseData.data.campaign),
+							this.helpers.returnJsonArray(responseData.data.campaign as IDataObject),
 							{ itemData: { item: i } },
 						);
 						returnData.push(...executionData);
@@ -252,7 +249,7 @@ export class Emelia implements INodeType {
 						}
 
 						const executionData = this.helpers.constructExecutionMetaData(
-							this.helpers.returnJsonArray(campaigns),
+							this.helpers.returnJsonArray(campaigns as IDataObject[]),
 							{ itemData: { item: i } },
 						);
 						returnData.push(...executionData);
@@ -423,7 +420,7 @@ export class Emelia implements INodeType {
 						}
 
 						const executionData = this.helpers.constructExecutionMetaData(
-							this.helpers.returnJsonArray(contactLists),
+							this.helpers.returnJsonArray(contactLists as IDataObject[]),
 							{ itemData: { item: i } },
 						);
 						returnData.push(...executionData);
@@ -442,6 +439,6 @@ export class Emelia implements INodeType {
 				throw error;
 			}
 		}
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

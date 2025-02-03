@@ -1,21 +1,19 @@
 /* eslint-disable n8n-nodes-base/node-filename-against-convention */
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
-	NodeOperationError,
 } from 'n8n-workflow';
+import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
 import { documentFields, documentOperations } from './DocumentDescription';
-
 import { erpNextApiRequest, erpNextApiRequestAllItems } from './GenericFunctions';
-
-import { DocumentProperties, processNames, toSQL } from './utils';
+import type { DocumentProperties } from './utils';
+import { processNames, toSQL } from './utils';
 
 export class ERPNext implements INodeType {
 	description: INodeTypeDescription = {
@@ -29,8 +27,8 @@ export class ERPNext implements INodeType {
 		defaults: {
 			name: 'ERPNext',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'erpNextApi',
@@ -283,11 +281,11 @@ export class ERPNext implements INodeType {
 			}
 
 			const executionData = this.helpers.constructExecutionMetaData(
-				this.helpers.returnJsonArray(responseData),
+				this.helpers.returnJsonArray(responseData as IDataObject[]),
 				{ itemData: { item: i } },
 			);
 			returnData.push(...executionData);
 		}
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

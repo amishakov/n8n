@@ -1,5 +1,12 @@
-import { IExecuteFunctions } from 'n8n-core';
-import { IDataObject, INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
+import type {
+	IExecuteFunctions,
+	IDataObject,
+	INodeExecutionData,
+	INodeType,
+	INodeTypeDescription,
+} from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
+
 import { hunterApiRequest, hunterApiRequestAllItems } from './GenericFunctions';
 
 export class Hunter implements INodeType {
@@ -15,8 +22,8 @@ export class Hunter implements INodeType {
 		defaults: {
 			name: 'Hunter',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'hunterApi',
@@ -80,7 +87,7 @@ export class Hunter implements INodeType {
 					},
 				},
 				default: true,
-				description: 'Whether to return only the the found emails',
+				description: 'Whether to return only the found emails',
 			},
 			{
 				displayName: 'Return All',
@@ -314,7 +321,7 @@ export class Hunter implements INodeType {
 								}
 								(tempReturnData.emails as IDataObject[]).push.apply(
 									tempReturnData.emails,
-									responseData[index].emails,
+									responseData[index].emails as IDataObject[],
 								);
 							}
 
@@ -332,7 +339,7 @@ export class Hunter implements INodeType {
 
 						if (Array.isArray(responseData)) {
 							for (const data of responseData) {
-								tempReturnData.push.apply(tempReturnData, data.emails);
+								tempReturnData.push.apply(tempReturnData, data.emails as IDataObject[]);
 							}
 						} else {
 							tempReturnData = responseData.emails;
@@ -361,7 +368,7 @@ export class Hunter implements INodeType {
 				}
 
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as IDataObject[]),
 					{ itemData: { item: i } },
 				);
 
@@ -379,6 +386,6 @@ export class Hunter implements INodeType {
 			}
 		}
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

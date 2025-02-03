@@ -1,20 +1,19 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import { IDataObject, INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
+import type {
+	IExecuteFunctions,
+	IDataObject,
+	INodeExecutionData,
+	INodeType,
+	INodeTypeDescription,
+} from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
+import { v4 as uuid } from 'uuid';
 
 import { segmentApiRequest } from './GenericFunctions';
-
 import { groupFields, groupOperations } from './GroupDescription';
-
 import { identifyFields, identifyOperations } from './IdentifyDescription';
-
-import { IIdentify } from './IdentifyInterface';
-
+import type { IIdentify } from './IdentifyInterface';
 import { trackFields, trackOperations } from './TrackDescription';
-
-import { IGroup, ITrack } from './TrackInterface';
-
-import { v4 as uuid } from 'uuid';
+import type { IGroup, ITrack } from './TrackInterface';
 
 export class Segment implements INodeType {
 	description: INodeTypeDescription = {
@@ -28,8 +27,8 @@ export class Segment implements INodeType {
 		defaults: {
 			name: 'Segment',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'segmentApi',

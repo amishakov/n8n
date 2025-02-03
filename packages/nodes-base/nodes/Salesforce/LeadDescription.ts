@@ -1,4 +1,4 @@
-import { INodeProperties } from 'n8n-workflow';
+import type { INodeProperties } from 'n8n-workflow';
 
 export const leadOperations: INodeProperties[] = [
 	{
@@ -93,7 +93,7 @@ export const leadFields: INodeProperties[] = [
 			},
 		},
 		description:
-			'The field to check to see if the lead already exists. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+			'The field to check to see if the lead already exists. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 	},
 	{
 		displayName: 'Value to Match',
@@ -200,7 +200,7 @@ export const leadFields: INodeProperties[] = [
 								},
 								default: '',
 								description:
-									'The ID of the field to add custom field to. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+									'The ID of the field to add custom field to. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 							},
 							{
 								displayName: 'Value',
@@ -229,11 +229,34 @@ export const leadFields: INodeProperties[] = [
 				description: 'Email address for the lead',
 			},
 			{
-				displayName: 'Fist Name',
+				displayName: 'Fax',
+				name: 'fax',
+				type: 'number',
+				default: '',
+				description: 'Fax number of the lead',
+			},
+			{
+				displayName: 'First Name',
 				name: 'firstname',
 				type: 'string',
 				default: '',
 				description: 'First name of the lead. Limited to 40 characters.',
+			},
+			{
+				displayName: 'Has Opted Out of Email',
+				name: 'hasOptedOutOfEmail',
+				type: 'boolean',
+				default: false,
+				description:
+					'Whether the lead doesn’t want to receive email from Salesforce (true) or does (false). Label is Email Opt Out.',
+			},
+			{
+				displayName: 'Has Opted Out of Fax',
+				name: 'hasOptedOutOfFax',
+				type: 'boolean',
+				default: false,
+				description:
+					'Whether the lead doesn’t want to receive fax from Salesforce (true) or does (false). Label is Email Opt Out.',
 			},
 			{
 				displayName: 'Industry',
@@ -267,7 +290,7 @@ export const leadFields: INodeProperties[] = [
 				},
 				default: '',
 				description:
-					'Source from which the lead was obtained. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+					'Source from which the lead was obtained. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 			},
 			{
 				displayName: 'Mobile Phone',
@@ -292,7 +315,7 @@ export const leadFields: INodeProperties[] = [
 				},
 				default: '',
 				description:
-					'The owner of the lead. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+					'The owner of the lead. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 			},
 			{
 				displayName: 'Phone',
@@ -313,7 +336,7 @@ export const leadFields: INodeProperties[] = [
 				name: 'recordTypeId',
 				type: 'options',
 				description:
-					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>',
+					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 				typeOptions: {
 					loadOptionsMethod: 'getRecordTypes',
 				},
@@ -349,7 +372,7 @@ export const leadFields: INodeProperties[] = [
 				},
 				default: '',
 				description:
-					'Status code for this converted lead. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+					'Status code for this converted lead. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 			},
 			{
 				displayName: 'Street',
@@ -461,7 +484,7 @@ export const leadFields: INodeProperties[] = [
 								},
 								default: '',
 								description:
-									'The ID of the field to add custom field to. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+									'The ID of the field to add custom field to. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 							},
 							{
 								displayName: 'Value',
@@ -490,11 +513,34 @@ export const leadFields: INodeProperties[] = [
 				description: 'Email address for the lead',
 			},
 			{
-				displayName: 'Fist Name',
+				displayName: 'Fax',
+				name: 'fax',
+				type: 'number',
+				default: '',
+				description: 'Fax Number of the lead',
+			},
+			{
+				displayName: 'First Name',
 				name: 'firstname',
 				type: 'string',
 				default: '',
 				description: 'First name of the lead. Limited to 40 characters.',
+			},
+			{
+				displayName: 'Has Opted Out of Email',
+				name: 'hasOptedOutOfEmail',
+				type: 'boolean',
+				default: false,
+				description:
+					'Whether the lead doesn’t want to receive email from Salesforce (true) or does (false). Label is Email Opt Out.',
+			},
+			{
+				displayName: 'Has Opted Out of Fax',
+				name: 'HasOptedOutOfFax',
+				type: 'boolean',
+				default: false,
+				description:
+					'Whether the lead doesn’t want to receive fax from Salesforce (true) or does (false). Label is Fax Opt Out.',
 			},
 			{
 				displayName: 'Industry',
@@ -535,7 +581,7 @@ export const leadFields: INodeProperties[] = [
 				},
 				default: '',
 				description:
-					'Source from which the lead was obtained. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+					'Source from which the lead was obtained. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 			},
 			{
 				displayName: 'Mobile Phone',
@@ -560,7 +606,7 @@ export const leadFields: INodeProperties[] = [
 				},
 				default: '',
 				description:
-					'The owner of the lead. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+					'The owner of the lead. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 			},
 			{
 				displayName: 'Postal Code',
@@ -581,7 +627,7 @@ export const leadFields: INodeProperties[] = [
 				name: 'recordTypeId',
 				type: 'options',
 				description:
-					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>',
+					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 				typeOptions: {
 					loadOptionsMethod: 'getRecordTypes',
 				},
@@ -617,7 +663,7 @@ export const leadFields: INodeProperties[] = [
 				},
 				default: '',
 				description:
-					'Status code for this converted lead. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+					'Status code for this converted lead. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 			},
 			{
 				displayName: 'Street',
@@ -750,7 +796,7 @@ export const leadFields: INodeProperties[] = [
 								},
 								default: '',
 								description:
-									'For date, number, or boolean, please use expressions. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+									'For date, number, or boolean, please use expressions. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 							},
 							// eslint-disable-next-line n8n-nodes-base/node-param-operation-without-no-data-expression
 							{
@@ -834,7 +880,7 @@ export const leadFields: INodeProperties[] = [
 			},
 		},
 		description:
-			'ID of the campaign that needs to be fetched. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+			'ID of the campaign that needs to be fetched. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 	},
 	{
 		displayName: 'Options',
@@ -927,7 +973,7 @@ export const leadFields: INodeProperties[] = [
 				},
 				default: '',
 				description:
-					'ID of the user who owns the note. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+					'ID of the user who owns the note. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 			},
 		],
 	},

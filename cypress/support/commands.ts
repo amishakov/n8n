@@ -1,148 +1,132 @@
-// ***********************************************
-// This example commands.js shows you how to
-// create various custom commands and overwrite
-// existing commands.
-//
-// For more comprehensive examples of custom
-// commands please read more here:
-// https://on.cypress.io/custom-commands
-// ***********************************************
-//
-//
-// -- This is a parent command --
-// Cypress.Commands.add('login', (email, password) => { ... })
-//
-//
-// -- This is a child command --
-// Cypress.Commands.add('drag', { prevSubject: 'element'}, (subject, options) => { ... })
-//
-//
-// -- This is a dual command --
-// Cypress.Commands.add('dismiss', { prevSubject: 'optional'}, (subject, options) => { ... })
-//
-//
-// -- This will overwrite an existing command --
-// Cypress.Commands.overwrite('visit', (originalFn, url, options) => { ... })
+import 'cypress-real-events';
+import type { FrontendSettings } from '@n8n/api-types';
+import FakeTimers from '@sinonjs/fake-timers';
 
-import { WorkflowsPage, SigninPage, SignupPage } from '../pages';
-import { N8N_AUTH_COOKIE } from '../constants';
-import { WorkflowPage as WorkflowPageClass } from '../pages/workflow';
-import { MessageBox } from '../pages/modals/message-box';
+import {
+	BACKEND_BASE_URL,
+	INSTANCE_ADMIN,
+	INSTANCE_MEMBERS,
+	INSTANCE_OWNER,
+	N8N_AUTH_COOKIE,
+} from '../constants';
+import { WorkflowPage } from '../pages';
+import { getUniqueWorkflowName, isCanvasV2 } from '../utils/workflowUtils';
+
+Cypress.Commands.add('setAppDate', (targetDate: number | Date) => {
+	cy.window().then((win) => {
+		FakeTimers.withGlobal(win).install({
+			now: targetDate,
+			toFake: ['Date'],
+			shouldAdvanceTime: true,
+		});
+	});
+});
 
 Cypress.Commands.add('getByTestId', (selector, ...args) => {
 	return cy.get(`[data-test-id="${selector}"]`, ...args);
 });
 
-Cypress.Commands.add('createFixtureWorkflow', (fixtureKey, workflowName) => {
-	const WorkflowPage = new WorkflowPageClass();
-
-	// We need to force the click because the input is hidden
-	WorkflowPage.getters
-		.workflowImportInput()
-		.selectFile(`cypress/fixtures/${fixtureKey}`, { force: true });
-	WorkflowPage.getters.workflowNameInput().should('be.disabled');
-	WorkflowPage.getters.workflowNameInput().parent().click();
-	WorkflowPage.getters.workflowNameInput().should('be.enabled');
-	WorkflowPage.getters.workflowNameInput().clear().type(workflowName).type('{enter}');
-
-	WorkflowPage.getters.saveButton().should('contain', 'Saved');
+Cypress.Commands.add('ifCanvasVersion', (getterV1, getterV2) => {
+	return isCanvasV2() ? getterV2() : getterV1();
 });
 
 Cypress.Commands.add(
-	'findChildByTestId',
-	{ prevSubject: true },
-	(subject: Cypress.Chainable<JQuery<HTMLElement>>, childTestId) => {
-		return subject.find(`[data-test-id="${childTestId}"]`);
+	'createFixtureWorkflow',
+	(fixtureKey: string, workflowName = getUniqueWorkflowName()) => {
+		const workflowPage = new WorkflowPage();
+
+		// We need to force the click because the input is hidden
+		workflowPage.getters
+			.workflowImportInput()
+			.selectFile(`fixtures/${fixtureKey}`, { force: true });
+
+		cy.waitForLoad(false);
+		workflowPage.actions.setWorkflowName(workflowName);
+		workflowPage.getters.saveButton().should('contain', 'Saved');
+		workflowPage.actions.zoomToFit();
 	},
 );
 
-Cypress.Commands.add('waitForLoad', () => {
-	cy.getByTestId('node-view-loader').should('not.exist', { timeout: 10000 });
-	cy.get('.el-loading-mask').should('not.exist', { timeout: 10000 });
+Cypress.Commands.addQuery('findChildByTestId', function (testId: string) {
+	return (subject: Cypress.Chainable) => subject.find(`[data-test-id="${testId}"]`);
+});
+
+Cypress.Commands.add('waitForLoad', (waitForIntercepts = true) => {
+	// These aliases are set-up before each test in cypress/support/e2e.ts
+	// we can't set them up here because at this point it would be too late
+	// and the requests would already have been made
+	if (waitForIntercepts) {
+		cy.wait(['@loadSettings', '@loadNodeTypes']);
+	}
+	cy.getByTestId('node-view-loader', { timeout: 20000 }).should('not.exist');
+	cy.get('.el-loading-mask', { timeout: 20000 }).should('not.exist');
 });
 
 Cypress.Commands.add('signin', ({ email, password }) => {
-	const signinPage = new SigninPage();
-	const workflowsPage = new WorkflowsPage();
+	void Cypress.session.clearAllSavedSessions();
+	cy.session([email, password], () => {
+		return cy
+			.request({
+				method: 'POST',
+				url: `${BACKEND_BASE_URL}/rest/login`,
+				body: { email, password },
+				failOnStatusCode: false,
+			})
+			.then((response) => {
+				Cypress.env('currentUserId', response.body.data.id);
 
-	cy.session(
-		[email, password],
-		() => {
-			cy.visit(signinPage.url);
+				// @TODO Remove this once the switcher is removed
+				cy.window().then((win) => {
+					win.localStorage.setItem('NodeView.migrated.release', 'true');
+					win.localStorage.setItem('NodeView.switcher.discovered.beta', 'true');
 
-			signinPage.getters.form().within(() => {
-				signinPage.getters.email().type(email);
-				signinPage.getters.password().type(password);
-				signinPage.getters.submit().click();
+					const nodeViewVersion = Cypress.env('NODE_VIEW_VERSION');
+					win.localStorage.setItem('NodeView.version', nodeViewVersion ?? '1');
+				});
 			});
-
-			// we should be redirected to /workflows
-			cy.url().should('include', workflowsPage.url);
-		},
-		{
-			validate() {
-				cy.getCookie(N8N_AUTH_COOKIE).should('exist');
-			},
-		},
-	);
-});
-
-Cypress.Commands.add('setup', ({ email, firstName, lastName, password }) => {
-	const signupPage = new SignupPage();
-
-	cy.visit(signupPage.url);
-
-	signupPage.getters.form().within(() => {
-		cy.url().then((url) => {
-			if (url.endsWith(signupPage.url)) {
-				signupPage.getters.email().type(email);
-				signupPage.getters.firstName().type(firstName);
-				signupPage.getters.lastName().type(lastName);
-				signupPage.getters.password().type(password);
-				signupPage.getters.submit().click();
-			} else {
-				cy.log('User already signed up');
-			}
-		});
 	});
 });
 
-Cypress.Commands.add('skipSetup', () => {
-	const signupPage = new SignupPage();
-	const workflowsPage = new WorkflowsPage();
-	const Confirmation = new MessageBox();
+Cypress.Commands.add('signinAsOwner', () => cy.signin(INSTANCE_OWNER));
+Cypress.Commands.add('signinAsAdmin', () => cy.signin(INSTANCE_ADMIN));
+Cypress.Commands.add('signinAsMember', (index = 0) => cy.signin(INSTANCE_MEMBERS[index]));
 
-	cy.visit(signupPage.url);
-
-	signupPage.getters.form().within(() => {
-		cy.url().then((url) => {
-			if (url.endsWith(signupPage.url)) {
-				signupPage.getters.skip().click();
-
-				Confirmation.getters.header().should('contain.text', 'Skip owner account setup?');
-				Confirmation.actions.confirm();
-
-				// we should be redirected to /workflows
-				cy.url().should('include', workflowsPage.url);
-			} else {
-				cy.log('User already signed up');
-			}
-		});
+Cypress.Commands.add('signout', () => {
+	cy.request({
+		method: 'POST',
+		url: `${BACKEND_BASE_URL}/rest/logout`,
+		headers: { 'browser-id': localStorage.getItem('n8n-browserId') },
 	});
+	cy.getCookie(N8N_AUTH_COOKIE).should('not.exist');
 });
 
-Cypress.Commands.add('resetAll', () => {
-	cy.task('reset');
-	Cypress.session.clearAllSavedSessions();
+export let settings: Partial<FrontendSettings>;
+Cypress.Commands.add('overrideSettings', (value: Partial<FrontendSettings>) => {
+	settings = value;
 });
 
-Cypress.Commands.add('setupOwner', (payload) => {
-	cy.task('setup-owner', payload);
-});
+const setFeature = (feature: string, enabled: boolean) =>
+	cy.request('PATCH', `${BACKEND_BASE_URL}/rest/e2e/feature`, {
+		feature: `feat:${feature}`,
+		enabled,
+	});
 
-Cypress.Commands.add('enableFeature', (feature) => {
-	cy.task('enable-feature', feature);
-});
+const setQuota = (feature: string, value: number) =>
+	cy.request('PATCH', `${BACKEND_BASE_URL}/rest/e2e/quota`, {
+		feature: `quota:${feature}`,
+		value,
+	});
+
+const setQueueMode = (enabled: boolean) =>
+	cy.request('PATCH', `${BACKEND_BASE_URL}/rest/e2e/queue-mode`, {
+		enabled,
+	});
+
+Cypress.Commands.add('enableFeature', (feature: string) => setFeature(feature, true));
+Cypress.Commands.add('changeQuota', (feature: string, value: number) => setQuota(feature, value));
+Cypress.Commands.add('disableFeature', (feature: string) => setFeature(feature, false));
+Cypress.Commands.add('enableQueueMode', () => setQueueMode(true));
+Cypress.Commands.add('disableQueueMode', () => setQueueMode(false));
 
 Cypress.Commands.add('grantBrowserPermissions', (...permissions: string[]) => {
 	if (Cypress.isBrowser('chrome')) {
@@ -157,8 +141,9 @@ Cypress.Commands.add('grantBrowserPermissions', (...permissions: string[]) => {
 		);
 	}
 });
+
 Cypress.Commands.add('readClipboard', () =>
-	cy.window().its('navigator.clipboard').invoke('readText'),
+	cy.window().then((win) => win.navigator.clipboard.readText()),
 );
 
 Cypress.Commands.add('paste', { prevSubject: true }, (selector, pastePayload) => {
@@ -173,18 +158,106 @@ Cypress.Commands.add('paste', { prevSubject: true }, (selector, pastePayload) =>
 	});
 });
 
-Cypress.Commands.add('drag', (selector, xDiff, yDiff) => {
-	const element = cy.get(selector);
+Cypress.Commands.add('drag', (selector, pos, options) => {
+	const index = options?.index ?? 0;
+	const [xDiff, yDiff] = pos;
+	const element = typeof selector === 'string' ? cy.get(selector).eq(index) : selector;
 	element.should('exist');
 
-	const originalLocation = Cypress.$(selector)[0].getBoundingClientRect();
-
-	element.trigger('mousedown');
-	element.trigger('mousemove', {
-		which: 1,
-		pageX: originalLocation.right + xDiff,
-		pageY: originalLocation.top + yDiff,
-		force: true,
+	element.then(([$el]) => {
+		const originalLocation = $el.getBoundingClientRect();
+		const newPosition = {
+			x: options?.abs ? xDiff : originalLocation.right + xDiff,
+			y: options?.abs ? yDiff : originalLocation.top + yDiff,
+		};
+		if (options?.realMouse) {
+			element.realMouseDown();
+			element.realMouseMove(0, 0);
+			element.realMouseMove(newPosition.x, newPosition.y);
+			element.realMouseUp();
+		} else {
+			element.trigger('mousedown', { force: true });
+			element.trigger('mousemove', {
+				which: 1,
+				pageX: newPosition.x,
+				pageY: newPosition.y,
+				force: true,
+			});
+			if (options?.moveTwice) {
+				// first move like hover to trigger object to be visible
+				// like in main panel in ndv
+				element.trigger('mousemove', {
+					which: 1,
+					pageX: newPosition.x,
+					pageY: newPosition.y,
+					force: true,
+				});
+			}
+			if (options?.clickToFinish) {
+				// Click to finish the drag
+				// For some reason, mouseup isn't working when moving nodes
+				cy.get('body').click(newPosition.x, newPosition.y);
+			} else {
+				element.trigger('mouseup', { force: true });
+			}
+		}
 	});
-	element.trigger('mouseup');
+});
+
+Cypress.Commands.add('draganddrop', (draggableSelector, droppableSelector, options) => {
+	if (draggableSelector) {
+		cy.get(draggableSelector).should('exist');
+	}
+	cy.get(droppableSelector).should('exist');
+
+	cy.get(droppableSelector)
+		.first()
+		.then(([$el]) => {
+			const coords = $el.getBoundingClientRect();
+
+			const pageX = coords.left + coords.width / 2;
+			const pageY = coords.top + coords.height / 2;
+
+			if (draggableSelector) {
+				cy.ifCanvasVersion(
+					() => {
+						// We can't use realMouseDown here because it hangs headless run
+						cy.get(draggableSelector).trigger('mousedown');
+					},
+					() => {
+						cy.get(draggableSelector).realMouseDown();
+					},
+				);
+			}
+			// We don't chain these commands to make sure cy.get is re-trying correctly
+			cy.get(droppableSelector).realMouseMove(0, 0);
+			cy.get(droppableSelector).realMouseMove(pageX, pageY);
+			cy.get(droppableSelector).realHover();
+			cy.get(droppableSelector).realMouseUp({ position: options?.position ?? 'top' });
+			if (draggableSelector) {
+				cy.get(draggableSelector).realMouseUp();
+			}
+		});
+});
+
+Cypress.Commands.add('push', (type, data) => {
+	cy.request('POST', `${BACKEND_BASE_URL}/rest/e2e/push`, {
+		type,
+		data,
+	});
+});
+
+Cypress.Commands.add('shouldNotHaveConsoleErrors', () => {
+	cy.window().then((win) => {
+		const spy = cy.spy(win.console, 'error');
+		cy.wrap(spy).should('not.have.been.called');
+	});
+});
+
+Cypress.Commands.add('resetDatabase', () => {
+	cy.request('POST', `${BACKEND_BASE_URL}/rest/e2e/reset`, {
+		owner: INSTANCE_OWNER,
+		members: INSTANCE_MEMBERS,
+		admin: INSTANCE_ADMIN,
+	});
 });

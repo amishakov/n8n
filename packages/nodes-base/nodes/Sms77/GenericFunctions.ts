@@ -1,28 +1,32 @@
-import { IExecuteFunctions, IHookFunctions } from 'n8n-core';
-
-import { IDataObject, NodeApiError } from 'n8n-workflow';
-
-import { OptionsWithUri } from 'request';
+import type {
+	IDataObject,
+	IExecuteFunctions,
+	IHookFunctions,
+	IHttpRequestMethods,
+	IRequestOptions,
+	JsonObject,
+} from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
 
 /**
- * Make an API request to Sms77
+ * Make an API request to seven
  *
  * @param {IHookFunctions | IExecuteFunctions} this
  * @param {object | undefined} data
  */
 export async function sms77ApiRequest(
 	this: IHookFunctions | IExecuteFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	body: IDataObject,
 	qs: IDataObject = {},
 ): Promise<any> {
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		headers: {
 			SentWith: 'n8n',
 		},
 		qs,
-		uri: `https://gateway.sms77.io/api${endpoint}`,
+		uri: `https://gateway.seven.io/api${endpoint}`,
 		json: true,
 		method,
 	};
@@ -35,7 +39,7 @@ export async function sms77ApiRequest(
 	const response = await this.helpers.requestWithAuthentication.call(this, 'sms77Api', options);
 
 	if (response.success !== '100') {
-		throw new NodeApiError(this.getNode(), response, {
+		throw new NodeApiError(this.getNode(), response as JsonObject, {
 			message: 'Invalid sms77 credentials or API error!',
 		});
 	}

@@ -1,14 +1,13 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
-	NodeOperationError,
 } from 'n8n-workflow';
+import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
 import {
 	getTableColumns,
@@ -21,12 +20,9 @@ import {
 	split,
 	updateAble,
 } from './GenericFunctions';
-
+import type { ICtx, IRow, IRowObject } from './Interfaces';
 import { rowFields, rowOperations } from './RowDescription';
-
-import { TColumnsUiValues, TColumnValue } from './types';
-
-import { ICtx, IRow, IRowObject } from './Interfaces';
+import type { TColumnsUiValues, TColumnValue } from './types';
 
 export class SeaTable implements INodeType {
 	description: INodeTypeDescription = {
@@ -40,8 +36,8 @@ export class SeaTable implements INodeType {
 		defaults: {
 			name: 'SeaTable',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'seaTableApi',
@@ -200,7 +196,7 @@ export class SeaTable implements INodeType {
 							);
 						}
 
-						const newRowInsertData = rowMapKeyToName(responseData, tableColumns);
+						const newRowInsertData = rowMapKeyToName(responseData as IRow, tableColumns);
 
 						qs.table_name = tableName;
 						qs.convert = true;
@@ -208,7 +204,9 @@ export class SeaTable implements INodeType {
 							this,
 							ctx,
 							'GET',
-							`/dtable-server/api/v1/dtables/{{dtable_uuid}}/rows/${encodeURIComponent(insertId)}/`,
+							`/dtable-server/api/v1/dtables/{{dtable_uuid}}/rows/${encodeURIComponent(
+								insertId as string,
+							)}/`,
 							body,
 							qs,
 						);
@@ -222,7 +220,7 @@ export class SeaTable implements INodeType {
 						}
 
 						const row = rowFormatColumns(
-							{ ...newRowInsertData, ...newRow },
+							{ ...newRowInsertData, ...(newRow as IRow) },
 							tableColumns.map(({ name }) => name).concat(['_id', '_ctime', '_mtime']),
 						);
 
@@ -322,7 +320,7 @@ export class SeaTable implements INodeType {
 						);
 
 						const executionData = this.helpers.constructExecutionMetaData(
-							this.helpers.returnJsonArray(rows),
+							this.helpers.returnJsonArray(rows as IDataObject[]),
 							{ itemData: { item: i } },
 						);
 
@@ -424,7 +422,7 @@ export class SeaTable implements INodeType {
 						);
 
 						const executionData = this.helpers.constructExecutionMetaData(
-							this.helpers.returnJsonArray({ _id: rowId, ...responseData }),
+							this.helpers.returnJsonArray({ _id: rowId, ...(responseData as IDataObject) }),
 							{ itemData: { item: i } },
 						);
 
@@ -445,6 +443,6 @@ export class SeaTable implements INodeType {
 				throw new NodeOperationError(this.getNode(), `The operation "${operation}" is not known!`);
 			}
 		}
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

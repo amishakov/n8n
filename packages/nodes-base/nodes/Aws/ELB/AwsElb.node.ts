@@ -1,6 +1,5 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
@@ -9,15 +8,14 @@ import {
 	INodeTypeDescription,
 	JsonObject,
 } from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
 
 import { awsApiRequestSOAP, awsApiRequestSOAPAllItems } from './GenericFunctions';
-
-import { loadBalancerFields, loadBalancerOperations } from './LoadBalancerDescription';
-
 import {
 	listenerCertificateFields,
 	listenerCertificateOperations,
 } from './ListenerCertificateDescription';
+import { loadBalancerFields, loadBalancerOperations } from './LoadBalancerDescription';
 
 export class AwsElb implements INodeType {
 	description: INodeTypeDescription = {
@@ -31,8 +29,8 @@ export class AwsElb implements INodeType {
 		defaults: {
 			name: 'AWS ELB',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'aws',
@@ -443,9 +441,12 @@ export class AwsElb implements INodeType {
 				}
 
 				returnData.push(
-					...this.helpers.constructExecutionMetaData(this.helpers.returnJsonArray(responseData), {
-						itemData: { item: i },
-					}),
+					...this.helpers.constructExecutionMetaData(
+						this.helpers.returnJsonArray(responseData as IDataObject),
+						{
+							itemData: { item: i },
+						},
+					),
 				);
 			} catch (error) {
 				if (this.continueOnFail()) {

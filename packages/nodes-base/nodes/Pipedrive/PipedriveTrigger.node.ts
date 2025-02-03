@@ -1,17 +1,17 @@
-import { IHookFunctions, IWebhookFunctions } from 'n8n-core';
-
+import basicAuth from 'basic-auth';
+import type { Response } from 'express';
 import {
-	ICredentialDataDecryptedObject,
-	INodeType,
-	INodeTypeDescription,
-	IWebhookResponseData,
+	type IHookFunctions,
+	type IWebhookFunctions,
+	type ICredentialDataDecryptedObject,
+	type IDataObject,
+	type INodeType,
+	type INodeTypeDescription,
+	type IWebhookResponseData,
+	NodeConnectionType,
 } from 'n8n-workflow';
 
 import { pipedriveApiRequest } from './GenericFunctions';
-
-import basicAuth from 'basic-auth';
-
-import { Response } from 'express';
 
 function authorizationError(resp: Response, realm: string, responseCode: number, message?: string) {
 	if (message === undefined) {
@@ -42,7 +42,7 @@ export class PipedriveTrigger implements INodeType {
 			name: 'Pipedrive Trigger',
 		},
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'pipedriveApi',
@@ -209,7 +209,6 @@ export class PipedriveTrigger implements INodeType {
 		],
 	};
 
-	// @ts-ignore (because of request)
 	webhookMethods = {
 		default: {
 			async checkExists(this: IHookFunctions): Promise<boolean> {
@@ -304,7 +303,7 @@ export class PipedriveTrigger implements INodeType {
 					}
 
 					// Remove from the static workflow data so that it is clear
-					// that no webhooks are registred anymore
+					// that no webhooks are registered anymore
 					delete webhookData.webhookId;
 					delete webhookData.webhookEvents;
 				}
@@ -326,7 +325,7 @@ export class PipedriveTrigger implements INodeType {
 			let httpBasicAuth: ICredentialDataDecryptedObject | undefined;
 
 			try {
-				httpBasicAuth = await this.getCredentials('httpBasicAuth');
+				httpBasicAuth = await this.getCredentials<ICredentialDataDecryptedObject>('httpBasicAuth');
 			} catch (error) {
 				// Do nothing
 			}
@@ -353,7 +352,7 @@ export class PipedriveTrigger implements INodeType {
 		}
 
 		return {
-			workflowData: [this.helpers.returnJsonArray(req.body)],
+			workflowData: [this.helpers.returnJsonArray(req.body as IDataObject[])],
 		};
 	}
 }

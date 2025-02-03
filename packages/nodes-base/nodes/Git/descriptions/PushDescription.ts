@@ -1,4 +1,4 @@
-import { INodeProperties } from 'n8n-workflow';
+import type { INodeProperties } from 'n8n-workflow';
 
 export const pushFields: INodeProperties[] = [
 	{
@@ -10,7 +10,7 @@ export const pushFields: INodeProperties[] = [
 				operation: ['push'],
 			},
 		},
-		placeholder: 'Add Option',
+		placeholder: 'Add option',
 		default: {},
 		options: [
 			{

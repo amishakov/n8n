@@ -1,26 +1,13 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
-	ICredentialsDecrypted,
-	ICredentialTestFunctions,
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
-	INodeCredentialTestResult,
 	INodeExecutionData,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
-	NodeOperationError,
 } from 'n8n-workflow';
-
-import {
-	elasticSecurityApiRequest,
-	getConnector,
-	getVersion,
-	handleListing,
-	throwOnEmptyUpdate,
-	tolerateTrailingSlash,
-} from './GenericFunctions';
+import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
 import {
 	caseCommentFields,
@@ -32,15 +19,14 @@ import {
 	connectorFields,
 	connectorOperations,
 } from './descriptions';
-
 import {
-	Connector,
-	ConnectorCreatePayload,
-	ConnectorType,
-	ElasticSecurityApiCredentials,
-} from './types';
-
-import { OptionsWithUri } from 'request';
+	elasticSecurityApiRequest,
+	getConnector,
+	getVersion,
+	handleListing,
+	throwOnEmptyUpdate,
+} from './GenericFunctions';
+import type { Connector, ConnectorCreatePayload, ConnectorType } from './types';
 
 export class ElasticSecurity implements INodeType {
 	description: INodeTypeDescription = {
@@ -54,13 +40,12 @@ export class ElasticSecurity implements INodeType {
 		defaults: {
 			name: 'Elastic Security',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'elasticSecurityApi',
 				required: true,
-				testedBy: 'elasticSecurityApiTest',
 			},
 		],
 		properties: [
@@ -115,49 +100,6 @@ export class ElasticSecurity implements INodeType {
 					endpoint,
 				)) as Connector[];
 				return connectors.map(({ name, id }) => ({ name, value: id }));
-			},
-		},
-		credentialTest: {
-			async elasticSecurityApiTest(
-				this: ICredentialTestFunctions,
-				credential: ICredentialsDecrypted,
-			): Promise<INodeCredentialTestResult> {
-				const {
-					username,
-					password,
-					baseUrl: rawBaseUrl,
-				} = credential.data as ElasticSecurityApiCredentials;
-
-				const baseUrl = tolerateTrailingSlash(rawBaseUrl);
-
-				const token = Buffer.from(`${username}:${password}`).toString('base64');
-
-				const endpoint = '/cases/status';
-
-				const options: OptionsWithUri = {
-					headers: {
-						Authorization: `Basic ${token}`,
-						'kbn-xsrf': true,
-					},
-					method: 'GET',
-					body: {},
-					qs: {},
-					uri: `${baseUrl}/api${endpoint}`,
-					json: true,
-				};
-
-				try {
-					await this.helpers.request(options);
-					return {
-						status: 'OK',
-						message: 'Authentication successful',
-					};
-				} catch (error) {
-					return {
-						status: 'Error',
-						message: error.message,
-					};
-				}
 			},
 		},
 	};
@@ -447,7 +389,7 @@ export class ElasticSecurity implements INodeType {
 						const body = {
 							comment: this.getNodeParameter('comment', i),
 							type: 'user',
-							owner: additionalFields.owner ?? 'securitySolution',
+							owner: additionalFields.owner || 'securitySolution',
 						} as IDataObject;
 
 						const caseId = this.getNodeParameter('caseId', i);
@@ -574,7 +516,7 @@ export class ElasticSecurity implements INodeType {
 				}
 
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as IDataObject[]),
 					{ itemData: { item: i } },
 				);
 				returnData.push(...executionData);
@@ -591,6 +533,6 @@ export class ElasticSecurity implements INodeType {
 			}
 		}
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

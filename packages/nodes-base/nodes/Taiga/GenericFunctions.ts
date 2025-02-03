@@ -1,29 +1,19 @@
-import { OptionsWithUri } from 'request';
-
-import {
+import { createHash } from 'crypto';
+import type {
+	ICredentialDataDecryptedObject,
+	IDataObject,
 	IExecuteFunctions,
-	IExecuteSingleFunctions,
 	IHookFunctions,
 	ILoadOptionsFunctions,
 	IWebhookFunctions,
-} from 'n8n-core';
-
-import {
-	ICredentialDataDecryptedObject,
-	IDataObject,
-	NodeApiError,
-	NodeOperationError,
+	JsonObject,
+	IHttpRequestMethods,
+	IRequestOptions,
 } from 'n8n-workflow';
-
-import { createHash } from 'crypto';
+import { NodeApiError, NodeOperationError } from 'n8n-workflow';
 
 export async function getAuthorization(
-	this:
-		| IHookFunctions
-		| IExecuteFunctions
-		| IExecuteSingleFunctions
-		| ILoadOptionsFunctions
-		| IWebhookFunctions,
+	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions | IWebhookFunctions,
 	credentials?: ICredentialDataDecryptedObject,
 ): Promise<string> {
 	if (credentials === undefined) {
@@ -31,7 +21,7 @@ export async function getAuthorization(
 	}
 
 	const { password, username } = credentials;
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		headers: { 'Content-Type': 'application/json' },
 		method: 'POST',
 		body: {
@@ -48,18 +38,13 @@ export async function getAuthorization(
 
 		return response.auth_token;
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
 export async function taigaApiRequest(
-	this:
-		| IHookFunctions
-		| IExecuteFunctions
-		| IExecuteSingleFunctions
-		| ILoadOptionsFunctions
-		| IWebhookFunctions,
-	method: string,
+	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions | IWebhookFunctions,
+	method: IHttpRequestMethods,
 	resource: string,
 	body = {},
 	query = {},
@@ -70,7 +55,7 @@ export async function taigaApiRequest(
 
 	const authToken = await getAuthorization.call(this, credentials);
 
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		headers: {
 			'Content-Type': 'application/json',
 		},
@@ -94,16 +79,16 @@ export async function taigaApiRequest(
 	try {
 		return await this.helpers.request(options);
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
 export async function taigaApiRequestAllItems(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	resource: string,
 
-	body: any = {},
+	body: IDataObject = {},
 	query: IDataObject = {},
 ): Promise<any> {
 	const returnData: IDataObject[] = [];
@@ -116,9 +101,10 @@ export async function taigaApiRequestAllItems(
 		responseData = await taigaApiRequest.call(this, method, resource, body, query, uri, {
 			resolveWithFullResponse: true,
 		});
-		returnData.push.apply(returnData, responseData.body);
+		returnData.push.apply(returnData, responseData.body as IDataObject[]);
 		uri = responseData.headers['x-pagination-next'];
-		if (query.limit && returnData.length >= query.limit) {
+		const limit = query.limit as number | undefined;
+		if (limit && returnData.length >= limit) {
 			return returnData;
 		}
 	} while (
@@ -135,7 +121,7 @@ export function getAutomaticSecret(credentials: ICredentialDataDecryptedObject) 
 
 export async function handleListing(
 	this: IExecuteFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	body: IDataObject,
 	qs: IDataObject,
@@ -146,7 +132,7 @@ export async function handleListing(
 	const returnAll = this.getNodeParameter('returnAll', i);
 
 	if (returnAll) {
-		return taigaApiRequestAllItems.call(this, method, endpoint, body, qs);
+		return await taigaApiRequestAllItems.call(this, method, endpoint, body, qs);
 	} else {
 		qs.limit = this.getNodeParameter('limit', i);
 		responseData = await taigaApiRequestAllItems.call(this, method, endpoint, body, qs);
@@ -165,5 +151,5 @@ export function throwOnEmptyUpdate(this: IExecuteFunctions, resource: Resource) 
 }
 
 export async function getVersionForUpdate(this: IExecuteFunctions, endpoint: string) {
-	return taigaApiRequest.call(this, 'GET', endpoint).then((response) => response.version);
+	return await taigaApiRequest.call(this, 'GET', endpoint).then((response) => response.version);
 }

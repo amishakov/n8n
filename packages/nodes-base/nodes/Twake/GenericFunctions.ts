@@ -1,6 +1,11 @@
-import { IExecuteFunctions, IHookFunctions, ILoadOptionsFunctions } from 'n8n-core';
-
-import { OptionsWithUri } from 'request';
+import type {
+	IDataObject,
+	IExecuteFunctions,
+	IHookFunctions,
+	IHttpRequestMethods,
+	ILoadOptionsFunctions,
+	IRequestOptions,
+} from 'n8n-workflow';
 
 /**
  * Make an API request to Twake
@@ -8,18 +13,18 @@ import { OptionsWithUri } from 'request';
  */
 export async function twakeApiRequest(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	resource: string,
 	body: object,
-	query?: object,
+	query?: IDataObject,
 	uri?: string,
 ) {
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		headers: {},
 		method,
 		body,
 		qs: query,
-		uri: uri ?? `https://plugins.twake.app/plugins/n8n${resource}`,
+		uri: uri || `https://plugins.twake.app/plugins/n8n${resource}`,
 		json: true,
 	};
 
@@ -30,5 +35,5 @@ export async function twakeApiRequest(
 	// 	options.uri = `${credentials!.hostUrl}/api/v1${resource}`;
 	// }
 
-	return this.helpers.requestWithAuthentication.call(this, 'twakeCloudApi', options);
+	return await this.helpers.requestWithAuthentication.call(this, 'twakeCloudApi', options);
 }

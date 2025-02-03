@@ -1,25 +1,28 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import ISO6391 from 'iso-639-1';
+import type {
+	IExecuteFunctions,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
-	NodeOperationError,
+	JsonObject,
 } from 'n8n-workflow';
-
-import { AttributesValuesUi, CommentAnalyzeBody, Language, RequestedAttributes } from './types';
+import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
 import { googleApiRequest } from './GenericFunctions';
-
-import ISO6391 from 'iso-639-1';
+import type {
+	AttributesValuesUi,
+	CommentAnalyzeBody,
+	Language,
+	RequestedAttributes,
+} from './types';
 
 export class GooglePerspective implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Google Perspective',
 		name: 'googlePerspective',
-		icon: 'file:perspective.svg',
+		icon: { light: 'file:googlePerspective.svg', dark: 'file:googlePerspective.dark.svg' },
 		group: ['transform'],
 		version: 1,
 		description: 'Consume Google Perspective API',
@@ -27,8 +30,8 @@ export class GooglePerspective implements INodeType {
 		defaults: {
 			name: 'Google Perspective',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'googlePerspectiveOAuth2Api',
@@ -150,7 +153,7 @@ export class GooglePerspective implements INodeType {
 					},
 				},
 				default: {},
-				placeholder: 'Add Option',
+				placeholder: 'Add option',
 				options: [
 					{
 						displayName: 'Language Name or ID',
@@ -161,7 +164,7 @@ export class GooglePerspective implements INodeType {
 						},
 						default: '',
 						description:
-							'Languages of the text input. If unspecified, the API will auto-detect the comment language. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+							'Languages of the text input. If unspecified, the API will auto-detect the comment language. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 					},
 				],
 			},
@@ -170,7 +173,7 @@ export class GooglePerspective implements INodeType {
 
 	methods = {
 		loadOptions: {
-			// Get all the available languages to display them to user so that he can
+			// Get all the available languages to display them to user so that they can
 			// select them easily
 			async getLanguages(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -270,13 +273,13 @@ export class GooglePerspective implements INodeType {
 			}
 
 			const executionData = this.helpers.constructExecutionMetaData(
-				this.helpers.returnJsonArray(responseData),
+				this.helpers.returnJsonArray(responseData as JsonObject),
 				{ itemData: { item: i } },
 			);
 
 			returnData.push(...executionData);
 		}
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

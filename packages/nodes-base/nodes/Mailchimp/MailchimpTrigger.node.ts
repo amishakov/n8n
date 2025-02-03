@@ -1,20 +1,23 @@
-import { IHookFunctions, IWebhookFunctions } from 'n8n-core';
-
-import {
+import type {
+	IDataObject,
+	IHookFunctions,
+	IWebhookFunctions,
 	ILoadOptionsFunctions,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
 	IWebhookResponseData,
-	NodeApiError,
+	JsonObject,
 } from 'n8n-workflow';
+import { NodeApiError, NodeConnectionType } from 'n8n-workflow';
+
 import { mailchimpApiRequest } from './GenericFunctions';
 
 export class MailchimpTrigger implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Mailchimp Trigger',
 		name: 'mailchimpTrigger',
-		icon: 'file:mailchimp.svg',
+		icon: { light: 'file:mailchimp.svg', dark: 'file:mailchimp.dark.svg' },
 		group: ['trigger'],
 		version: 1,
 		description: 'Handle Mailchimp events via webhooks',
@@ -22,7 +25,7 @@ export class MailchimpTrigger implements INodeType {
 			name: 'Mailchimp Trigger',
 		},
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'mailchimpApi',
@@ -47,13 +50,13 @@ export class MailchimpTrigger implements INodeType {
 			{
 				name: 'setup',
 				httpMethod: 'GET',
-				reponseMode: 'onReceived',
+				responseMode: 'onReceived',
 				path: 'webhook',
 			},
 			{
 				name: 'default',
 				httpMethod: 'POST',
-				reponseMode: 'onReceived',
+				responseMode: 'onReceived',
 				path: 'webhook',
 			},
 		],
@@ -81,7 +84,7 @@ export class MailchimpTrigger implements INodeType {
 				required: true,
 				default: '',
 				description:
-					'The list that is gonna fire the event. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+					'The list that is gonna fire the event. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 				typeOptions: {
 					loadOptionsMethod: 'getLists',
 				},
@@ -161,17 +164,12 @@ export class MailchimpTrigger implements INodeType {
 
 	methods = {
 		loadOptions: {
-			// Get all the available lists to display them to user so that he can
+			// Get all the available lists to display them to user so that they can
 			// select them easily
 			async getLists(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
-				let lists, response;
-				try {
-					response = await mailchimpApiRequest.call(this, '/lists', 'GET');
-					lists = response.lists;
-				} catch (error) {
-					throw new NodeApiError(this.getNode(), error);
-				}
+				const response = await mailchimpApiRequest.call(this, '/lists', 'GET');
+				const lists = response.lists;
 				for (const list of lists) {
 					const listName = list.name;
 					const listId = list.id;
@@ -186,7 +184,6 @@ export class MailchimpTrigger implements INodeType {
 		},
 	};
 
-	// @ts-ignore (because of request)
 	webhookMethods = {
 		default: {
 			async checkExists(this: IHookFunctions): Promise<boolean> {
@@ -200,16 +197,23 @@ export class MailchimpTrigger implements INodeType {
 				try {
 					await mailchimpApiRequest.call(this, endpoint, 'GET');
 				} catch (error) {
-					if (error.statusCode === 404) {
-						return false;
+					if (
+						error instanceof NodeApiError &&
+						error.cause &&
+						'isAxiosError' in error.cause &&
+						'statusCode' in error.cause
+					) {
+						if (error.cause.statusCode === 404) {
+							return false;
+						}
+						throw error;
 					}
-					throw new NodeApiError(this.getNode(), error);
+					throw new NodeApiError(this.getNode(), error as JsonObject);
 				}
 				return true;
 			},
 
 			async create(this: IHookFunctions): Promise<boolean> {
-				let webhook;
 				const webhookUrl = this.getNodeWebhookUrl('default');
 				const listId = this.getNodeParameter('list') as string;
 				const events = this.getNodeParameter('events', []) as string[];
@@ -228,11 +232,7 @@ export class MailchimpTrigger implements INodeType {
 					}, {}),
 				};
 				const endpoint = `/lists/${listId}/webhooks`;
-				try {
-					webhook = await mailchimpApiRequest.call(this, endpoint, 'POST', body);
-				} catch (error) {
-					throw error;
-				}
+				const webhook = await mailchimpApiRequest.call(this, endpoint, 'POST', body);
 				if (webhook.id === undefined) {
 					return false;
 				}
@@ -287,7 +287,7 @@ export class MailchimpTrigger implements INodeType {
 			return {};
 		}
 		return {
-			workflowData: [this.helpers.returnJsonArray(req.body)],
+			workflowData: [this.helpers.returnJsonArray(req.body as IDataObject)],
 		};
 	}
 }

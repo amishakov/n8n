@@ -1,6 +1,11 @@
-import { IHookFunctions, IWebhookFunctions } from 'n8n-core';
-
-import { INodeType, INodeTypeDescription, IWebhookResponseData } from 'n8n-workflow';
+import {
+	type IHookFunctions,
+	type IWebhookFunctions,
+	type INodeType,
+	type INodeTypeDescription,
+	type IWebhookResponseData,
+	NodeConnectionType,
+} from 'n8n-workflow';
 
 import { apiRequest } from './GenericFunctions';
 
@@ -18,7 +23,7 @@ export class TrelloTrigger implements INodeType {
 			name: 'Trello Trigger',
 		},
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'trelloApi',
@@ -52,7 +57,6 @@ export class TrelloTrigger implements INodeType {
 		],
 	};
 
-	// @ts-ignore (because of request)
 	webhookMethods = {
 		default: {
 			async checkExists(this: IHookFunctions): Promise<boolean> {
@@ -122,7 +126,7 @@ export class TrelloTrigger implements INodeType {
 					}
 
 					// Remove from the static workflow data so that it is clear
-					// that no webhooks are registred anymore
+					// that no webhooks are registered anymore
 					delete webhookData.webhookId;
 				}
 

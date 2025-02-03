@@ -1,6 +1,5 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
@@ -8,17 +7,13 @@ import {
 	INodeType,
 	INodeTypeDescription,
 } from 'n8n-workflow';
-
-import { discourseApiRequest } from './GenericFunctions';
-
-import { postFields, postOperations } from './PostDescription';
+import { NodeConnectionType } from 'n8n-workflow';
 
 import { categoryFields, categoryOperations } from './CategoryDescription';
-
+import { discourseApiRequest } from './GenericFunctions';
 import { groupFields, groupOperations } from './GroupDescription';
-
+import { postFields, postOperations } from './PostDescription';
 import { userFields, userOperations } from './UserDescription';
-
 import { userGroupFields, userGroupOperations } from './UserGroupDescription';
 
 export class Discourse implements INodeType {
@@ -33,8 +28,8 @@ export class Discourse implements INodeType {
 		defaults: {
 			name: 'Discourse',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'discourseApi',
@@ -92,7 +87,7 @@ export class Discourse implements INodeType {
 
 	methods = {
 		loadOptions: {
-			// Get all the calendars to display them to user so that he can
+			// Get all the calendars to display them to user so that they can
 			// select them easily
 			async getCategories(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -373,6 +368,24 @@ export class Discourse implements INodeType {
 						const returnAll = this.getNodeParameter('returnAll', i);
 						const flag = this.getNodeParameter('flag', i) as boolean;
 
+						const options = this.getNodeParameter('options', i);
+
+						if (options.stats) {
+							qs.stats = options.stats as boolean;
+						}
+
+						if (options.asc) {
+							qs.asc = options.asc as boolean;
+						}
+
+						if (options.showEmails) {
+							qs.show_emails = options.showEmails as boolean;
+						}
+
+						if (options.order) {
+							qs.order = options.order as string;
+						}
+
 						responseData = await discourseApiRequest.call(
 							this,
 							'GET',
@@ -421,7 +434,7 @@ export class Discourse implements INodeType {
 				}
 
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as IDataObject[]),
 					{ itemData: { item: i } },
 				);
 				returnData.push(...executionData);
@@ -437,6 +450,6 @@ export class Discourse implements INodeType {
 				throw error;
 			}
 		}
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

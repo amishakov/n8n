@@ -1,19 +1,17 @@
-import { OptionsWithUri } from 'request';
-
-import {
+import { snakeCase } from 'change-case';
+import type {
+	IDataObject,
 	IExecuteFunctions,
-	IExecuteSingleFunctions,
 	IHookFunctions,
 	ILoadOptionsFunctions,
-} from 'n8n-core';
-
-import { IDataObject, IOAuth2Options } from 'n8n-workflow';
-
-import { snakeCase } from 'change-case';
+	IOAuth2Options,
+	IHttpRequestMethods,
+	IRequestOptions,
+} from 'n8n-workflow';
 
 export async function shopifyApiRequest(
-	this: IHookFunctions | IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions,
-	method: string,
+	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
+	method: IHttpRequestMethods,
 	resource: string,
 
 	body: any = {},
@@ -36,10 +34,10 @@ export async function shopifyApiRequest(
 		credentials = await this.getCredentials('shopifyOAuth2Api');
 	}
 
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		method,
 		qs: query,
-		uri: uri ?? `https://${credentials.shopSubdomain}.myshopify.com/admin/api/2019-10${resource}`,
+		uri: uri || `https://${credentials.shopSubdomain}.myshopify.com/admin/api/2024-07/${resource}`,
 		body,
 		json: true,
 	};
@@ -58,14 +56,28 @@ export async function shopifyApiRequest(
 	if (Object.keys(option).length !== 0) {
 		Object.assign(options, option);
 	}
-	if (Object.keys(body).length === 0) {
+	if (Object.keys(body as IDataObject).length === 0) {
 		delete options.body;
 	}
 	if (Object.keys(query).length === 0) {
 		delete options.qs;
 	}
 
-	return this.helpers.requestWithAuthentication.call(this, credentialType, options, {
+	// Only limit and fields are allowed for page_info links
+	// https://shopify.dev/docs/api/usage/pagination-rest#limitations-and-considerations
+	if (uri && uri.includes('page_info')) {
+		options.qs = {};
+
+		if (query.limit) {
+			options.qs.limit = query.limit;
+		}
+
+		if (query.fields) {
+			options.qs.fields = query.fields;
+		}
+	}
+
+	return await this.helpers.requestWithAuthentication.call(this, credentialType, options, {
 		oauth2: oAuth2Options,
 	});
 }
@@ -73,7 +85,7 @@ export async function shopifyApiRequest(
 export async function shopifyApiRequestAllItems(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
 	propertyName: string,
-	method: string,
+	method: IHttpRequestMethods,
 	resource: string,
 
 	body: any = {},
@@ -104,7 +116,7 @@ export async function shopifyApiRequestAllItems(
 		if (responseData.headers.link) {
 			uri = responseData.headers.link.split(';')[0].replace('<', '').replace('>', '');
 		}
-		returnData.push.apply(returnData, responseData.body[propertyName]);
+		returnData.push.apply(returnData, responseData.body[propertyName] as IDataObject[]);
 	} while (responseData.headers.link?.includes('rel="next"'));
 	return returnData;
 }

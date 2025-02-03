@@ -1,17 +1,17 @@
-import { IExecuteFunctions } from 'n8n-core';
-
 import {
-	ICredentialDataDecryptedObject,
-	ICredentialsDecrypted,
-	ICredentialTestFunctions,
-	IDataObject,
-	ILoadOptionsFunctions,
-	INodeCredentialTestResult,
-	INodeExecutionData,
-	INodePropertyOptions,
-	INodeType,
-	INodeTypeDescription,
-	JsonObject,
+	type IExecuteFunctions,
+	type ICredentialDataDecryptedObject,
+	type ICredentialsDecrypted,
+	type ICredentialTestFunctions,
+	type IDataObject,
+	type ILoadOptionsFunctions,
+	type INodeCredentialTestResult,
+	type INodeExecutionData,
+	type INodePropertyOptions,
+	type INodeType,
+	type INodeTypeDescription,
+	type JsonObject,
+	NodeConnectionType,
 } from 'n8n-workflow';
 
 import {
@@ -20,9 +20,7 @@ import {
 	sort,
 	validateCredentials,
 } from './GenericFunctions';
-
 import { issueFields, issueOperations } from './IssueDescription';
-
 import { query } from './Queries';
 interface IGraphqlBody {
 	query: string;
@@ -40,16 +38,46 @@ export class Linear implements INodeType {
 		defaults: {
 			name: 'Linear',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'linearApi',
 				required: true,
 				testedBy: 'linearApiTest',
+				displayOptions: {
+					show: {
+						authentication: ['apiToken'],
+					},
+				},
+			},
+			{
+				name: 'linearOAuth2Api',
+				required: true,
+				displayOptions: {
+					show: {
+						authentication: ['oAuth2'],
+					},
+				},
 			},
 		],
 		properties: [
+			{
+				displayName: 'Authentication',
+				name: 'authentication',
+				type: 'options',
+				options: [
+					{
+						name: 'API Token',
+						value: 'apiToken',
+					},
+					{
+						name: 'OAuth2',
+						value: 'oAuth2',
+					},
+				],
+				default: 'apiToken',
+			},
 			{
 				displayName: 'Resource',
 				name: 'resource',
@@ -134,11 +162,38 @@ export class Linear implements INodeType {
 				return returnData;
 			},
 			async getStates(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+				let teamId = this.getNodeParameter('teamId', null) as string;
+				// Handle Updates
+				if (!teamId) {
+					const updateFields = this.getNodeParameter('updateFields', null) as IDataObject;
+					// If not updating the team look up the current team
+					if (!updateFields.teamId) {
+						const issueId = this.getNodeParameter('issueId');
+						const body = {
+							query: query.getIssueTeam(),
+							variables: {
+								issueId,
+							},
+						};
+						const responseData = await linearApiRequest.call(this, body);
+						teamId = responseData?.data?.issue?.team?.id;
+					} else {
+						teamId = updateFields.teamId as string;
+					}
+				}
+
 				const returnData: INodePropertyOptions[] = [];
 				const body = {
 					query: query.getStates(),
 					variables: {
 						$first: 10,
+						filter: {
+							team: {
+								id: {
+									eq: teamId,
+								},
+							},
+						},
 					},
 				};
 				const states = await linearApiRequestAllItems.call(this, 'data.workflowStates', body);
@@ -202,7 +257,7 @@ export class Linear implements INodeType {
 						};
 
 						responseData = await linearApiRequest.call(this, body);
-						responseData = responseData.data?.issues?.nodes[0];
+						responseData = responseData.data.issue;
 					}
 					if (operation === 'getAll') {
 						const returnAll = this.getNodeParameter('returnAll', i);
@@ -216,9 +271,7 @@ export class Linear implements INodeType {
 							responseData = await linearApiRequestAllItems.call(this, 'data.issues', body);
 						} else {
 							const limit = this.getNodeParameter('limit', 0);
-							body.variables.first = limit;
-							responseData = await linearApiRequest.call(this, body);
-							responseData = responseData.data.issues.nodes;
+							responseData = await linearApiRequestAllItems.call(this, 'data.issues', body, limit);
 						}
 					}
 					if (operation === 'update') {
@@ -238,7 +291,7 @@ export class Linear implements INodeType {
 				}
 
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as IDataObject),
 					{ itemData: { item: i } },
 				);
 
@@ -255,6 +308,6 @@ export class Linear implements INodeType {
 				throw error;
 			}
 		}
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

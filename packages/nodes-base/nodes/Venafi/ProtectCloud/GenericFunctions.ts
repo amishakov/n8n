@@ -1,25 +1,30 @@
-import { OptionsWithUri } from 'request';
-
-import { IExecuteFunctions, IExecuteSingleFunctions, ILoadOptionsFunctions } from 'n8n-core';
-
-import { IDataObject, IHookFunctions, JsonObject, NodeApiError } from 'n8n-workflow';
-
-import { get } from 'lodash';
-
 import * as nacl_factory from 'js-nacl';
+import get from 'lodash/get';
+import type {
+	IExecuteFunctions,
+	ILoadOptionsFunctions,
+	IDataObject,
+	IHookFunctions,
+	JsonObject,
+	IHttpRequestMethods,
+	IRequestOptions,
+} from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
 
 export async function venafiApiRequest(
-	this: IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions | IHookFunctions,
-	method: string,
+	this: IExecuteFunctions | ILoadOptionsFunctions | IHookFunctions,
+	method: IHttpRequestMethods,
 	resource: string,
 	body = {},
 	qs: IDataObject = {},
-	uri?: string,
 	option: IDataObject = {},
 ): Promise<any> {
 	const operation = this.getNodeParameter('operation', 0);
+	const credentials = await this.getCredentials('venafiTlsProtectCloudApi');
 
-	const options: OptionsWithUri = {
+	const region = credentials.region ?? 'cloud';
+
+	const options: IRequestOptions = {
 		headers: {
 			Accept: 'application/json',
 			'content-type': 'application/json',
@@ -27,7 +32,7 @@ export async function venafiApiRequest(
 		method,
 		body,
 		qs,
-		uri: `https://api.venafi.cloud${resource}`,
+		uri: `https://api.venafi.${region}${resource}`,
 		json: true,
 	};
 
@@ -62,12 +67,12 @@ export async function venafiApiRequest(
 export async function venafiApiRequestAllItems(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
 	propertyName: string,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 
-	body: any = {},
+	body: IDataObject = {},
 	query: IDataObject = {},
-): Promise<any> {
+) {
 	const returnData: IDataObject[] = [];
 
 	let responseData;
@@ -75,7 +80,7 @@ export async function venafiApiRequestAllItems(
 	do {
 		responseData = await venafiApiRequest.call(this, method, endpoint, body, query);
 		endpoint = get(responseData, '_links[0].Next');
-		returnData.push.apply(returnData, responseData[propertyName]);
+		returnData.push.apply(returnData, responseData[propertyName] as IDataObject[]);
 	} while (responseData._links?.[0].Next);
 
 	return returnData;
@@ -113,19 +118,19 @@ export async function encryptPassphrase(
 	let encryptedKeyStorePass = '';
 
 	const promise = async () => {
-		return new Promise((resolve, reject) => {
+		return await new Promise((resolve, reject) => {
 			nacl_factory.instantiate((nacl: any) => {
 				try {
 					const passphraseUTF8 = nacl.encode_utf8(passphrase) as string;
 					const keyPassBuffer = nacl.crypto_box_seal(passphraseUTF8, Buffer.from(pubKey, 'base64'));
-					encryptedKeyPass = Buffer.from(keyPassBuffer).toString('base64');
+					encryptedKeyPass = Buffer.from(keyPassBuffer as Buffer).toString('base64');
 
 					const storePassphraseUTF8 = nacl.encode_utf8(storePassphrase) as string;
 					const keyStorePassBuffer = nacl.crypto_box_seal(
 						storePassphraseUTF8,
 						Buffer.from(pubKey, 'base64'),
 					);
-					encryptedKeyStorePass = Buffer.from(keyStorePassBuffer).toString('base64');
+					encryptedKeyStorePass = Buffer.from(keyStorePassBuffer as Buffer).toString('base64');
 
 					return resolve([encryptedKeyPass, encryptedKeyStorePass]);
 				} catch (error) {
@@ -134,5 +139,5 @@ export async function encryptPassphrase(
 			});
 		});
 	};
-	return promise();
+	return await promise();
 }

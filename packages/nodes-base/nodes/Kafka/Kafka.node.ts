@@ -1,16 +1,8 @@
-import {
-	CompressionTypes,
-	Kafka as apacheKafka,
-	KafkaConfig,
-	SASLOptions,
-	TopicMessages,
-} from 'kafkajs';
-
 import { SchemaRegistry } from '@kafkajs/confluent-schema-registry';
-
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import type { KafkaConfig, SASLOptions, TopicMessages } from 'kafkajs';
+import { CompressionTypes, Kafka as apacheKafka } from 'kafkajs';
+import type {
+	IExecuteFunctions,
 	ICredentialDataDecryptedObject,
 	ICredentialsDecrypted,
 	ICredentialTestFunctions,
@@ -19,22 +11,24 @@ import {
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
-	NodeOperationError,
 } from 'n8n-workflow';
+import { ApplicationError, NodeConnectionType, NodeOperationError } from 'n8n-workflow';
+
+import { generatePairedItemData } from '../../utils/utilities';
 
 export class Kafka implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Kafka',
 		name: 'kafka',
-		icon: 'file:kafka.svg',
+		icon: { light: 'file:kafka.svg', dark: 'file:kafka.dark.svg' },
 		group: ['transform'],
 		version: 1,
 		description: 'Sends messages to a Kafka topic',
 		defaults: {
 			name: 'Kafka',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'kafka',
@@ -56,7 +50,7 @@ export class Kafka implements INodeType {
 				name: 'sendInputData',
 				type: 'boolean',
 				default: true,
-				description: 'Whether to send the the data the node receives as JSON to Kafka',
+				description: 'Whether to send the data the node receives as JSON to Kafka',
 			},
 			{
 				displayName: 'Message',
@@ -183,7 +177,7 @@ export class Kafka implements INodeType {
 				name: 'options',
 				type: 'collection',
 				default: {},
-				placeholder: 'Add Option',
+				placeholder: 'Add option',
 				options: [
 					{
 						displayName: 'Acks',
@@ -234,7 +228,9 @@ export class Kafka implements INodeType {
 					};
 					if (credentials.authentication === true) {
 						if (!(credentials.username && credentials.password)) {
-							throw Error('Username and password are required for authentication');
+							throw new ApplicationError('Username and password are required for authentication', {
+								level: 'warning',
+							});
 						}
 						config.sasl = {
 							username: credentials.username as string,
@@ -263,6 +259,7 @@ export class Kafka implements INodeType {
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
+		const itemData = generatePairedItemData(items.length);
 
 		const length = items.length;
 
@@ -402,10 +399,15 @@ export class Kafka implements INodeType {
 
 			await producer.disconnect();
 
-			return [this.helpers.returnJsonArray(responseData)];
+			const executionData = this.helpers.constructExecutionMetaData(
+				this.helpers.returnJsonArray(responseData),
+				{ itemData },
+			);
+
+			return [executionData];
 		} catch (error) {
 			if (this.continueOnFail()) {
-				return [this.helpers.returnJsonArray({ error: error.message })];
+				return [[{ json: { error: error.message }, pairedItem: itemData }]];
 			} else {
 				throw error;
 			}

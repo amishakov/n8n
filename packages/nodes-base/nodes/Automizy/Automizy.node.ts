@@ -1,19 +1,17 @@
-import { IExecuteFunctions } from 'n8n-core';
-
 import {
-	IDataObject,
-	ILoadOptionsFunctions,
-	INodeExecutionData,
-	INodePropertyOptions,
-	INodeType,
-	INodeTypeDescription,
-	NodeExecutionWithMetadata,
+	type IExecuteFunctions,
+	type IDataObject,
+	type ILoadOptionsFunctions,
+	type INodeExecutionData,
+	type INodePropertyOptions,
+	type INodeType,
+	type INodeTypeDescription,
+	type NodeExecutionWithMetadata,
+	NodeConnectionType,
 } from 'n8n-workflow';
 
-import { automizyApiRequest, automizyApiRequestAllItems } from './GenericFunctions';
-
 import { contactFields, contactOperations } from './ContactDescription';
-
+import { automizyApiRequest, automizyApiRequestAllItems } from './GenericFunctions';
 import { listFields, listOperations } from './ListDescription';
 
 export class Automizy implements INodeType {
@@ -29,8 +27,9 @@ export class Automizy implements INodeType {
 		defaults: {
 			name: 'Automizy',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
+		hidden: true,
 		credentials: [
 			{
 				name: 'automizyApi',
@@ -38,6 +37,13 @@ export class Automizy implements INodeType {
 			},
 		],
 		properties: [
+			{
+				displayName:
+					'This service may no longer exist and will be removed from n8n in a future release.',
+				name: 'deprecated',
+				type: 'notice',
+				default: '',
+			},
 			{
 				displayName: 'Resource',
 				name: 'resource',
@@ -66,7 +72,7 @@ export class Automizy implements INodeType {
 
 	methods = {
 		loadOptions: {
-			// Get all the tags to display them to user so that he can
+			// Get all the tags to display them to user so that they can
 			// select them easily
 			async getLists(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -164,7 +170,7 @@ export class Automizy implements INodeType {
 					);
 					responseData = responseData.contacts;
 					responseData = this.helpers.constructExecutionMetaData(
-						this.helpers.returnJsonArray(responseData),
+						this.helpers.returnJsonArray(responseData as IDataObject[]),
 						{ itemData: { item: i } },
 					);
 				}
@@ -186,7 +192,7 @@ export class Automizy implements INodeType {
 
 					responseData = await automizyApiRequest.call(this, 'GET', `/contacts/${contactId}`);
 					responseData = this.helpers.constructExecutionMetaData(
-						this.helpers.returnJsonArray(responseData),
+						this.helpers.returnJsonArray(responseData as IDataObject[]),
 						{ itemData: { item: i } },
 					);
 				}
@@ -228,7 +234,7 @@ export class Automizy implements INodeType {
 					}
 
 					responseData = this.helpers.constructExecutionMetaData(
-						this.helpers.returnJsonArray(responseData),
+						this.helpers.returnJsonArray(responseData as IDataObject[]),
 						{ itemData: { item: i } },
 					);
 				}
@@ -258,7 +264,7 @@ export class Automizy implements INodeType {
 
 					responseData = await automizyApiRequest.call(this, 'PATCH', `/contacts/${email}`, body);
 					responseData = this.helpers.constructExecutionMetaData(
-						this.helpers.returnJsonArray(responseData),
+						this.helpers.returnJsonArray(responseData as IDataObject[]),
 						{ itemData: { item: i } },
 					);
 				}
@@ -274,7 +280,7 @@ export class Automizy implements INodeType {
 
 					responseData = await automizyApiRequest.call(this, 'POST', '/smart-lists', body);
 					responseData = this.helpers.constructExecutionMetaData(
-						this.helpers.returnJsonArray(responseData),
+						this.helpers.returnJsonArray(responseData as IDataObject[]),
 						{ itemData: { item: i } },
 					);
 				}
@@ -296,7 +302,7 @@ export class Automizy implements INodeType {
 
 					responseData = await automizyApiRequest.call(this, 'GET', `/smart-lists/${listId}`);
 					responseData = this.helpers.constructExecutionMetaData(
-						this.helpers.returnJsonArray(responseData),
+						this.helpers.returnJsonArray(responseData as IDataObject[]),
 						{ itemData: { item: i } },
 					);
 				}
@@ -332,7 +338,7 @@ export class Automizy implements INodeType {
 					}
 
 					responseData = this.helpers.constructExecutionMetaData(
-						this.helpers.returnJsonArray(responseData),
+						this.helpers.returnJsonArray(responseData as IDataObject[]),
 						{ itemData: { item: i } },
 					);
 				}
@@ -354,7 +360,7 @@ export class Automizy implements INodeType {
 					);
 
 					responseData = this.helpers.constructExecutionMetaData(
-						this.helpers.returnJsonArray(responseData),
+						this.helpers.returnJsonArray(responseData as IDataObject[]),
 						{ itemData: { item: i } },
 					);
 				}
@@ -363,6 +369,6 @@ export class Automizy implements INodeType {
 
 		returnData.push(...(responseData as NodeExecutionWithMetadata[]));
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

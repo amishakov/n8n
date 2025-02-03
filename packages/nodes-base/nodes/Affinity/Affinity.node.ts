@@ -1,6 +1,5 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
@@ -8,27 +7,21 @@ import {
 	INodeType,
 	INodeTypeDescription,
 } from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
 
 import { affinityApiRequest, affinityApiRequestAllItems } from './GenericFunctions';
-
-import { organizationFields, organizationOperations } from './OrganizationDescription';
-
-import { personFields, personOperations } from './PersonDescription';
-
 import { listFields, listOperations } from './ListDescription';
-
 import { listEntryFields, listEntryOperations } from './ListEntryDescription';
-
-import { IOrganization } from './OrganizationInterface';
-
-import { IPerson } from './PersonInterface';
+import { organizationFields, organizationOperations } from './OrganizationDescription';
+import type { IOrganization } from './OrganizationInterface';
+import { personFields, personOperations } from './PersonDescription';
+import type { IPerson } from './PersonInterface';
 
 export class Affinity implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Affinity',
 		name: 'affinity',
-		// eslint-disable-next-line n8n-nodes-base/node-class-description-icon-not-svg
-		icon: 'file:affinity.png',
+		icon: { light: 'file:affinity.svg', dark: 'file:affinity.dark.svg' },
 		group: ['output'],
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
@@ -36,8 +29,8 @@ export class Affinity implements INodeType {
 		defaults: {
 			name: 'Affinity',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'affinityApi',
@@ -83,7 +76,7 @@ export class Affinity implements INodeType {
 
 	methods = {
 		loadOptions: {
-			// Get all the available organizations to display them to user so that he can
+			// Get all the available organizations to display them to user so that they can
 			// select them easily
 			async getOrganizations(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -104,7 +97,7 @@ export class Affinity implements INodeType {
 				}
 				return returnData;
 			},
-			// Get all the available persons to display them to user so that he can
+			// Get all the available persons to display them to user so that they can
 			// select them easily
 			async getPersons(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -128,7 +121,7 @@ export class Affinity implements INodeType {
 				}
 				return returnData;
 			},
-			// Get all the available lists to display them to user so that he can
+			// Get all the available lists to display them to user so that they can
 			// select them easily
 			async getLists(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -415,7 +408,7 @@ export class Affinity implements INodeType {
 				}
 
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as IDataObject[]),
 					{ itemData: { item: i } },
 				);
 
@@ -433,6 +426,6 @@ export class Affinity implements INodeType {
 			}
 		}
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

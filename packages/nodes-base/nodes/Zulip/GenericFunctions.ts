@@ -1,24 +1,34 @@
-import { OptionsWithUri } from 'request';
+import type {
+	IDataObject,
+	IExecuteFunctions,
+	ILoadOptionsFunctions,
+	IHookFunctions,
+	IWebhookFunctions,
+	JsonObject,
+	IHttpRequestMethods,
+	IRequestOptions,
+} from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
 
-import { IExecuteFunctions, ILoadOptionsFunctions } from 'n8n-core';
-
-import { IDataObject, IHookFunctions, IWebhookFunctions, NodeApiError } from 'n8n-workflow';
+import type { IMessage } from './MessageInterface';
+import type { IStream } from './StreamInterface';
+import type { IUser } from './UserInterface';
 
 export async function zulipApiRequest(
 	this: IExecuteFunctions | IWebhookFunctions | IHookFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	resource: string,
 
-	body: any = {},
+	body: IMessage | IStream | IUser = {},
 	query: IDataObject = {},
 	uri?: string,
 	option: IDataObject = {},
-): Promise<any> {
+) {
 	const credentials = await this.getCredentials('zulipApi');
 
-	const endpoint = `${credentials.url}/api/v1`;
+	const endpoint = `${credentials.url.toString().replace(new RegExp('/$'), '')}/api/v1`;
 
-	let options: OptionsWithUri = {
+	let options: IRequestOptions = {
 		auth: {
 			user: credentials.email as string,
 			password: credentials.apiKey as string,
@@ -27,9 +37,9 @@ export async function zulipApiRequest(
 			'Content-Type': 'application/x-www-form-urlencoded',
 		},
 		method,
-		form: body,
+		form: body as IDataObject,
 		qs: query,
-		uri: uri ?? `${endpoint}${resource}`,
+		uri: uri || `${endpoint}${resource}`,
 		json: true,
 	};
 	if (!Object.keys(body).length) {
@@ -42,7 +52,7 @@ export async function zulipApiRequest(
 	try {
 		return await this.helpers.request(options);
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 

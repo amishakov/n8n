@@ -1,6 +1,7 @@
-import { IHookFunctions, IWebhookFunctions } from 'n8n-core';
-
-import {
+import { snakeCase } from 'change-case';
+import type {
+	IHookFunctions,
+	IWebhookFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodePropertyOptions,
@@ -8,10 +9,9 @@ import {
 	INodeTypeDescription,
 	IWebhookResponseData,
 } from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
 
 import { netlifyApiRequest } from './GenericFunctions';
-
-import { snakeCase } from 'change-case';
 
 export class NetlifyTrigger implements INodeType {
 	description: INodeTypeDescription = {
@@ -26,7 +26,7 @@ export class NetlifyTrigger implements INodeType {
 			name: 'Netlify Trigger',
 		},
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'netlifyApi',
@@ -52,7 +52,7 @@ export class NetlifyTrigger implements INodeType {
 					loadOptionsMethod: 'getSites',
 				},
 				description:
-					'Select the Site ID. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+					'Select the Site ID. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 			},
 			{
 				displayName: 'Event',
@@ -94,7 +94,7 @@ export class NetlifyTrigger implements INodeType {
 					loadOptionsMethod: 'getForms',
 				},
 				description:
-					'Select a form. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+					'Select a form. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 			},
 			{
 				displayName: 'Simplify',
@@ -112,7 +112,6 @@ export class NetlifyTrigger implements INodeType {
 		],
 	};
 
-	// @ts-ignore
 	webhookMethods = {
 		default: {
 			async checkExists(this: IHookFunctions): Promise<boolean> {
@@ -207,7 +206,7 @@ export class NetlifyTrigger implements INodeType {
 		}
 
 		return {
-			workflowData: [this.helpers.returnJsonArray(response)],
+			workflowData: [this.helpers.returnJsonArray(response as IDataObject)],
 		};
 	}
 }

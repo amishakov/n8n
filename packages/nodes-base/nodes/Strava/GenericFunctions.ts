@@ -1,35 +1,29 @@
-import { OptionsWithUri } from 'request';
-
-import {
+import type {
+	IDataObject,
 	IExecuteFunctions,
-	IExecuteSingleFunctions,
 	IHookFunctions,
+	IHttpRequestMethods,
 	ILoadOptionsFunctions,
+	IRequestOptions,
 	IWebhookFunctions,
-} from 'n8n-core';
-
-import { IDataObject, NodeApiError } from 'n8n-workflow';
+	JsonObject,
+} from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
 
 export async function stravaApiRequest(
-	this:
-		| IExecuteFunctions
-		| IExecuteSingleFunctions
-		| ILoadOptionsFunctions
-		| IHookFunctions
-		| IWebhookFunctions,
-	method: string,
+	this: IExecuteFunctions | ILoadOptionsFunctions | IHookFunctions | IWebhookFunctions,
+	method: IHttpRequestMethods,
 	resource: string,
-
-	body: any = {},
+	body: IDataObject = {},
 	qs: IDataObject = {},
 	uri?: string,
 	headers: IDataObject = {},
-): Promise<any> {
-	const options: OptionsWithUri = {
+) {
+	const options: IRequestOptions = {
 		method,
 		form: body,
 		qs,
-		uri: uri ?? `https://www.strava.com/api/v3${resource}`,
+		uri: uri || `https://www.strava.com/api/v3${resource}`,
 		json: true,
 	};
 	try {
@@ -42,34 +36,32 @@ export async function stravaApiRequest(
 
 		if (this.getNode().type.includes('Trigger') && resource.includes('/push_subscriptions')) {
 			const credentials = await this.getCredentials('stravaOAuth2Api');
-			if (method === 'GET') {
+			if (method === 'GET' || method === 'DELETE') {
 				qs.client_id = credentials.clientId;
 				qs.client_secret = credentials.clientSecret;
 			} else {
 				body.client_id = credentials.clientId;
 				body.client_secret = credentials.clientSecret;
 			}
-			//@ts-ignore
 			return await this.helpers?.request(options);
 		} else {
-			//@ts-ignore
 			return await this.helpers.requestOAuth2.call(this, 'stravaOAuth2Api', options, {
 				includeCredentialsOnRefreshOnBody: true,
 			});
 		}
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
 export async function stravaApiRequestAllItems(
 	this: IHookFunctions | ILoadOptionsFunctions | IExecuteFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	resource: string,
 
-	body: any = {},
+	body: IDataObject = {},
 	query: IDataObject = {},
-): Promise<any> {
+) {
 	const returnData: IDataObject[] = [];
 
 	let responseData;
@@ -81,7 +73,7 @@ export async function stravaApiRequestAllItems(
 	do {
 		responseData = await stravaApiRequest.call(this, method, resource, body, query);
 		query.page++;
-		returnData.push.apply(returnData, responseData);
+		returnData.push.apply(returnData, responseData as IDataObject[]);
 	} while (responseData.length !== 0);
 
 	return returnData;

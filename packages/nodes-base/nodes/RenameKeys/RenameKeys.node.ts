@@ -1,13 +1,14 @@
-import { IExecuteFunctions } from 'n8n-core';
-import {
-	deepCopy,
+import get from 'lodash/get';
+import set from 'lodash/set';
+import unset from 'lodash/unset';
+import { NodeConnectionType, deepCopy } from 'n8n-workflow';
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
 } from 'n8n-workflow';
-
-import { get, set, unset } from 'lodash';
 
 interface IRenameKey {
 	currentKey: string;
@@ -19,15 +20,16 @@ export class RenameKeys implements INodeType {
 		displayName: 'Rename Keys',
 		name: 'renameKeys',
 		icon: 'fa:edit',
+		iconColor: 'crimson',
 		group: ['transform'],
 		version: 1,
-		description: 'Renames keys',
+		description: 'Update item field names',
 		defaults: {
 			name: 'Rename Keys',
 			color: '#772244',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		properties: [
 			{
 				displayName: 'Keys',
@@ -51,6 +53,7 @@ export class RenameKeys implements INodeType {
 								type: 'string',
 								default: '',
 								placeholder: 'currentKey',
+								requiresDataPath: 'single',
 								description:
 									'The current name of the key. It is also possible to define deep keys by using dot-notation like for example: "level1.level2.currentKey".',
 							},
@@ -72,7 +75,7 @@ export class RenameKeys implements INodeType {
 				name: 'additionalOptions',
 				type: 'collection',
 				default: {},
-				placeholder: 'Add Option',
+				placeholder: 'Add option',
 				options: [
 					{
 						displayName: 'Regex',

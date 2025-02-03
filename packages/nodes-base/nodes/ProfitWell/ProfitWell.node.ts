@@ -1,30 +1,29 @@
-import { IExecuteFunctions } from 'n8n-core';
-
 import {
-	IDataObject,
-	ILoadOptionsFunctions,
-	INodeExecutionData,
-	INodePropertyOptions,
-	INodeType,
-	INodeTypeDescription,
+	type IExecuteFunctions,
+	type IDataObject,
+	type ILoadOptionsFunctions,
+	type INodeExecutionData,
+	type INodePropertyOptions,
+	type INodeType,
+	type INodeTypeDescription,
+	NodeConnectionType,
 } from 'n8n-workflow';
 
+import { companyOperations } from './CompanyDescription';
+import type { Metrics } from './GenericFunctions';
 import {
 	profitWellApiRequest,
 	simplifyDailyMetrics,
 	simplifyMontlyMetrics,
 } from './GenericFunctions';
-
-import { companyOperations } from './CompanyDescription';
-
 import { metricFields, metricOperations } from './MetricDescription';
 
 export class ProfitWell implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'ProfitWell',
 		name: 'profitWell',
-		// eslint-disable-next-line n8n-nodes-base/node-class-description-icon-not-svg
-		icon: 'file:profitwell.png',
+
+		icon: { light: 'file:profitwell.svg', dark: 'file:profitwell.dark.svg' },
 		group: ['output'],
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
@@ -32,8 +31,8 @@ export class ProfitWell implements INodeType {
 		defaults: {
 			name: 'ProfitWell',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'profitWellApi',
@@ -121,7 +120,7 @@ export class ProfitWell implements INodeType {
 						}
 
 						responseData = await profitWellApiRequest.call(this, 'GET', `/metrics/${type}`, {}, qs);
-						responseData = responseData.data;
+						responseData = responseData.data as Metrics;
 
 						if (simple) {
 							if (type === 'daily') {

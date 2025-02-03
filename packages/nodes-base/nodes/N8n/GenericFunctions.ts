@@ -1,41 +1,41 @@
-import {
+import type {
 	DeclarativeRestApiSettings,
 	IDataObject,
 	IExecuteFunctions,
 	IExecutePaginationFunctions,
 	IExecuteSingleFunctions,
 	IHookFunctions,
+	IHttpRequestMethods,
 	IHttpRequestOptions,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
+	IRequestOptions,
 	JsonObject,
-	NodeApiError,
-	NodeOperationError,
 	PreSendAction,
 } from 'n8n-workflow';
-import { OptionsWithUri } from 'request';
+import { NodeApiError, NodeOperationError } from 'n8n-workflow';
 
 /**
  * A custom API request function to be used with the resourceLocator lookup queries.
  */
 export async function apiRequest(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	body: object,
 	query?: IDataObject,
 ): Promise<any> {
-	query = query ?? {};
+	query = query || {};
 
 	type N8nApiCredentials = {
 		apiKey: string;
 		baseUrl: string;
 	};
 
-	const credentials = (await this.getCredentials('n8nApi')) as N8nApiCredentials;
+	const credentials = await this.getCredentials<N8nApiCredentials>('n8nApi');
 	const baseUrl = credentials.baseUrl;
 
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		method,
 		body,
 		qs: query,
@@ -55,12 +55,12 @@ export async function apiRequest(
 
 export async function apiRequestAllItems(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	body: object,
 	query?: IDataObject,
 ): Promise<any> {
-	query = query ?? {};
+	query = query || {};
 	const returnData: IDataObject[] = [];
 
 	let nextCursor: string | undefined = undefined;
@@ -70,7 +70,7 @@ export async function apiRequestAllItems(
 		query.cursor = nextCursor;
 		query.limit = 100;
 		responseData = await apiRequest.call(this, method, endpoint, body, query);
-		returnData.push.apply(returnData, responseData.data);
+		returnData.push.apply(returnData, responseData.data as IDataObject[]);
 		nextCursor = responseData.nextCursor as string | undefined;
 	} while (nextCursor);
 	return returnData;
@@ -190,11 +190,11 @@ export const prepareWorkflowCreateBody: PreSendAction = async function (
 	const body = requestOptions.body as IDataObject;
 	const newBody: IDataObject = {};
 
-	newBody.name = body.name ?? 'My workflow';
-	newBody.nodes = body.nodes ?? [];
-	newBody.settings = body.settings ?? {};
-	newBody.connections = body.connections ?? {};
-	newBody.staticData = body.staticData ?? null;
+	newBody.name = body.name || 'My workflow';
+	newBody.nodes = body.nodes || [];
+	newBody.settings = body.settings || {};
+	newBody.connections = body.connections || {};
+	newBody.staticData = body.staticData || null;
 
 	requestOptions.body = newBody;
 

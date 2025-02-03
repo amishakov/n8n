@@ -1,12 +1,13 @@
-import { IExecuteFunctions } from 'n8n-core';
 import {
-	IDataObject,
-	ILoadOptionsFunctions,
-	INodeExecutionData,
-	INodeListSearchItems,
-	INodeListSearchResult,
-	INodeType,
-	INodeTypeDescription,
+	type IExecuteFunctions,
+	type IDataObject,
+	type ILoadOptionsFunctions,
+	type INodeExecutionData,
+	type INodeListSearchItems,
+	type INodeListSearchResult,
+	type INodeType,
+	type INodeTypeDescription,
+	NodeConnectionType,
 } from 'n8n-workflow';
 
 import { awsApiRequestSOAP } from './GenericFunctions';
@@ -23,8 +24,8 @@ export class AwsSns implements INodeType {
 		defaults: {
 			name: 'AWS SNS',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'aws',
@@ -75,7 +76,7 @@ export class AwsSns implements INodeType {
 				displayName: 'Options',
 				name: 'options',
 				type: 'collection',
-				placeholder: 'Add Option',
+				placeholder: 'Add option',
 				default: {},
 				options: [
 					{
@@ -302,8 +303,8 @@ export class AwsSns implements INodeType {
 
 					const params = [
 						'TopicArn=' + topic,
-						'Subject=' + (this.getNodeParameter('subject', i) as string),
-						'Message=' + (this.getNodeParameter('message', i) as string),
+						'Subject=' + encodeURIComponent(this.getNodeParameter('subject', i) as string),
+						'Message=' + encodeURIComponent(this.getNodeParameter('message', i) as string),
 					];
 
 					const responseData = await awsApiRequestSOAP.call(

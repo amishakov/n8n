@@ -1,23 +1,19 @@
-import { IExecuteFunctions, ILoadOptionsFunctions } from 'n8n-core';
-
 import {
-	IDataObject,
-	INodeExecutionData,
-	INodePropertyOptions,
-	INodeType,
-	INodeTypeDescription,
+	type IExecuteFunctions,
+	type ILoadOptionsFunctions,
+	type IDataObject,
+	type INodeExecutionData,
+	type INodePropertyOptions,
+	type INodeType,
+	type INodeTypeDescription,
+	NodeConnectionType,
 } from 'n8n-workflow';
 
-import { convertKitApiRequest } from './GenericFunctions';
-
 import { customFieldFields, customFieldOperations } from './CustomFieldDescription';
-
 import { formFields, formOperations } from './FormDescription';
-
+import { convertKitApiRequest } from './GenericFunctions';
 import { sequenceFields, sequenceOperations } from './SequenceDescription';
-
 import { tagFields, tagOperations } from './TagDescription';
-
 import { tagSubscriberFields, tagSubscriberOperations } from './TagSubscriberDescription';
 
 export class ConvertKit implements INodeType {
@@ -32,8 +28,8 @@ export class ConvertKit implements INodeType {
 		defaults: {
 			name: 'ConvertKit',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'convertKitApi',
@@ -100,7 +96,7 @@ export class ConvertKit implements INodeType {
 
 	methods = {
 		loadOptions: {
-			// Get all the tags to display them to user so that he can
+			// Get all the tags to display them to user so that they can
 			// select them easily
 			async getTags(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -116,7 +112,7 @@ export class ConvertKit implements INodeType {
 
 				return returnData;
 			},
-			// Get all the forms to display them to user so that he can
+			// Get all the forms to display them to user so that they can
 			// select them easily
 			async getForms(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -133,7 +129,7 @@ export class ConvertKit implements INodeType {
 				return returnData;
 			},
 
-			// Get all the sequences to display them to user so that he can
+			// Get all the sequences to display them to user so that they can
 			// select them easily
 			async getSequences(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -479,7 +475,7 @@ export class ConvertKit implements INodeType {
 				}
 
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as IDataObject[]),
 					{ itemData: { item: i } },
 				);
 				returnData.push(...executionData);
@@ -492,6 +488,6 @@ export class ConvertKit implements INodeType {
 			}
 		}
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

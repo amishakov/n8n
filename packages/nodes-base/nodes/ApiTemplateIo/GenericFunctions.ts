@@ -1,16 +1,20 @@
-import { OptionsWithUri } from 'request';
-
-import { IExecuteFunctions, ILoadOptionsFunctions } from 'n8n-core';
+import type {
+	IExecuteFunctions,
+	ILoadOptionsFunctions,
+	JsonObject,
+	IRequestOptions,
+	IHttpRequestMethods,
+} from 'n8n-workflow';
 import { NodeApiError } from 'n8n-workflow';
 
 export async function apiTemplateIoApiRequest(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	qs = {},
 	body = {},
 ) {
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		headers: {
 			'user-agent': 'n8n',
 			Accept: 'application/json',
@@ -39,11 +43,11 @@ export async function apiTemplateIoApiRequest(
 			options,
 		);
 		if (response.status === 'error') {
-			throw new NodeApiError(this.getNode(), response.message);
+			throw new NodeApiError(this.getNode(), response.message as JsonObject);
 		}
 		return response;
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
@@ -74,7 +78,7 @@ export function validateJSON(json: string | object | undefined): any {
 }
 
 export async function downloadImage(this: IExecuteFunctions, url: string) {
-	return this.helpers.request({
+	return await this.helpers.request({
 		uri: url,
 		method: 'GET',
 		json: false,

@@ -1,6 +1,6 @@
-import { IHookFunctions, IWebhookFunctions } from 'n8n-core';
-
-import {
+import type {
+	IHookFunctions,
+	IWebhookFunctions,
 	ICredentialsDecrypted,
 	ICredentialTestFunctions,
 	IDataObject,
@@ -9,31 +9,30 @@ import {
 	INodeTypeDescription,
 	IWebhookResponseData,
 	JsonObject,
-	NodeApiError,
 } from 'n8n-workflow';
+import { NodeApiError, NodeConnectionType, randomString } from 'n8n-workflow';
 
-import {
-	apiRequest,
-	getForms,
+import type {
 	ITypeformAnswer,
 	ITypeformAnswerField,
 	ITypeformDefinition,
 } from './GenericFunctions';
+import { apiRequest, getForms } from './GenericFunctions';
 
 export class TypeformTrigger implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Typeform Trigger',
 		name: 'typeformTrigger',
-		icon: 'file:typeform.svg',
+		icon: { light: 'file:typeform.svg', dark: 'file:typeform.dark.svg' },
 		group: ['trigger'],
-		version: 1,
+		version: [1, 1.1],
 		subtitle: '=Form ID: {{$parameter["formId"]}}',
 		description: 'Starts the workflow on a Typeform form submission',
 		defaults: {
 			name: 'Typeform Trigger',
 		},
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'typeformApi',
@@ -91,15 +90,14 @@ export class TypeformTrigger implements INodeType {
 				default: '',
 				required: true,
 				description:
-					'Form which should trigger workflow on submission. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+					'Form which should trigger workflow on submission. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 			},
 			{
-				// eslint-disable-next-line n8n-nodes-base/node-param-display-name-wrong-for-simplify
 				displayName: 'Simplify Answers',
 				name: 'simplifyAnswers',
 				type: 'boolean',
 				default: true,
-				// eslint-disable-next-line n8n-nodes-base/node-param-description-wrong-for-simplify
+
 				description:
 					'Whether to convert the answers to a key:value pair ("FIELD_TITLE":"USER_ANSER") to be easily processable',
 			},
@@ -154,7 +152,6 @@ export class TypeformTrigger implements INodeType {
 		},
 	};
 
-	// @ts-ignore (because of request)
 	webhookMethods = {
 		default: {
 			async checkExists(this: IHookFunctions): Promise<boolean> {
@@ -180,7 +177,7 @@ export class TypeformTrigger implements INodeType {
 				const webhookUrl = this.getNodeWebhookUrl('default');
 
 				const formId = this.getNodeParameter('formId') as string;
-				const webhookId = 'n8n-' + Math.random().toString(36).substring(2, 15);
+				const webhookId = 'n8n-' + randomString(10).toLowerCase();
 
 				const endpoint = `forms/${formId}/webhooks/${webhookId}`;
 
@@ -213,7 +210,7 @@ export class TypeformTrigger implements INodeType {
 						return false;
 					}
 					// Remove from the static workflow data so that it is clear
-					// that no webhooks are registred anymore
+					// that no webhooks are registered anymore
 					delete webhookData.webhookId;
 				}
 
@@ -223,6 +220,7 @@ export class TypeformTrigger implements INodeType {
 	};
 
 	async webhook(this: IWebhookFunctions): Promise<IWebhookResponseData> {
+		const version = this.getNode().typeVersion;
 		const bodyData = this.getBodyData();
 
 		const simplifyAnswers = this.getNodeParameter('simplifyAnswers') as boolean;
@@ -241,16 +239,16 @@ export class TypeformTrigger implements INodeType {
 		const answers = (bodyData.form_response as IDataObject).answers as ITypeformAnswer[];
 
 		// Some fields contain lower level fields of which we are only interested of the values
-		const subvalueKeys = ['label', 'labels'];
+		const subValueKeys = ['label', 'labels'];
 
 		if (simplifyAnswers) {
 			// Convert the answers to simple key -> value pairs
 			const definition = (bodyData.form_response as IDataObject).definition as ITypeformDefinition;
 
 			// Create a dictionary to get the field title by its ID
-			const defintitionsById: { [key: string]: string } = {};
+			const definitionsById: { [key: string]: string } = {};
 			for (const field of definition.fields) {
-				defintitionsById[field.id] = field.title.replace(/\{\{/g, '[').replace(/\}\}/g, ']');
+				definitionsById[field.id] = field.title.replace(/\{\{/g, '[').replace(/\}\}/g, ']');
 			}
 
 			// Convert the answers to key -> value pair
@@ -258,14 +256,14 @@ export class TypeformTrigger implements INodeType {
 			for (const answer of answers) {
 				let value = answer[answer.type];
 				if (typeof value === 'object') {
-					for (const key of subvalueKeys) {
+					for (const key of subValueKeys) {
 						if ((value as IDataObject)[key] !== undefined) {
 							value = (value as ITypeformAnswerField)[key];
 							break;
 						}
 					}
 				}
-				convertedAnswers[defintitionsById[answer.field.id]] = value;
+				convertedAnswers[definitionsById[answer.field.id]] = value;
 			}
 
 			if (onlyAnswers) {
@@ -281,7 +279,23 @@ export class TypeformTrigger implements INodeType {
 		}
 
 		if (onlyAnswers) {
-			// Return only the answer
+			// Return only the answers
+			if (version >= 1.1) {
+				return {
+					workflowData: [
+						this.helpers.returnJsonArray([
+							answers.reduce(
+								(acc, answer) => {
+									acc[answer.field.id] = answer;
+									return acc;
+								},
+								{} as Record<string, ITypeformAnswer>,
+							),
+						]),
+					],
+				};
+			}
+
 			return {
 				workflowData: [this.helpers.returnJsonArray([answers as unknown as IDataObject])],
 			};

@@ -1,8 +1,12 @@
-import { IPollFunctions } from 'n8n-core';
-
-import { IDataObject, INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
-
-import moment from 'moment';
+import moment from 'moment-timezone';
+import {
+	type IPollFunctions,
+	type IDataObject,
+	type INodeExecutionData,
+	type INodeType,
+	type INodeTypeDescription,
+	NodeConnectionType,
+} from 'n8n-workflow';
 
 import { venafiApiRequest } from './GenericFunctions';
 
@@ -26,7 +30,7 @@ export class VenafiTlsProtectDatacenterTrigger implements INodeType {
 		],
 		polling: true,
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		properties: [
 			{
 				displayName: 'Trigger On',
@@ -51,7 +55,7 @@ export class VenafiTlsProtectDatacenterTrigger implements INodeType {
 
 		const now = moment().format();
 
-		qs.ValidToGreater = webhookData.lastTimeChecked ?? now;
+		qs.ValidToGreater = webhookData.lastTimeChecked || now;
 
 		qs.ValidToLess = now;
 

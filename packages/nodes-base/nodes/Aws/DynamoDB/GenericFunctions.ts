@@ -1,18 +1,21 @@
-import {
+import type {
+	IDataObject,
 	IExecuteFunctions,
 	IHookFunctions,
 	ILoadOptionsFunctions,
 	IWebhookFunctions,
-} from 'n8n-core';
+	IHttpRequestOptions,
+	INodeExecutionData,
+	IHttpRequestMethods,
+} from 'n8n-workflow';
+import { ApplicationError, deepCopy } from 'n8n-workflow';
 
-import { deepCopy, IDataObject, IHttpRequestOptions, INodeExecutionData } from 'n8n-workflow';
-
-import { IRequestBody } from './types';
+import type { IRequestBody } from './types';
 
 export async function awsApiRequest(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions | IWebhookFunctions,
 	service: string,
-	method: string,
+	method: IHttpRequestMethods,
 	path: string,
 	body?: object | IRequestBody,
 	headers?: object,
@@ -32,31 +35,41 @@ export async function awsApiRequest(
 
 	try {
 		return JSON.parse(
-			await this.helpers.requestWithAuthentication.call(this, 'aws', requestOptions),
+			(await this.helpers.requestWithAuthentication.call(this, 'aws', requestOptions)) as string,
 		);
 	} catch (error) {
-		const errorMessage =
+		const statusCode = (error.statusCode || error.cause?.statusCode) as number;
+		let errorMessage =
 			error.response?.body?.message || error.response?.body?.Message || error.message;
-		if (error.statusCode === 403) {
+
+		if (statusCode === 403) {
 			if (errorMessage === 'The security token included in the request is invalid.') {
-				throw new Error('The AWS credentials are not valid!');
+				throw new ApplicationError('The AWS credentials are not valid!', { level: 'warning' });
 			} else if (
 				errorMessage.startsWith(
 					'The request signature we calculated does not match the signature you provided',
 				)
 			) {
-				throw new Error('The AWS credentials are not valid!');
+				throw new ApplicationError('The AWS credentials are not valid!', { level: 'warning' });
 			}
 		}
 
-		throw new Error(`AWS error response [${error.statusCode}]: ${errorMessage}`);
+		if (error.cause?.error) {
+			try {
+				errorMessage = JSON.parse(error.cause?.error).message;
+			} catch (ex) {}
+		}
+
+		throw new ApplicationError(`AWS error response [${statusCode}]: ${errorMessage}`, {
+			level: 'warning',
+		});
 	}
 }
 
 export async function awsApiRequestAllItems(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions | IWebhookFunctions,
 	service: string,
-	method: string,
+	method: IHttpRequestMethods,
 	path: string,
 	body?: IRequestBody,
 	headers?: object,
@@ -71,7 +84,7 @@ export async function awsApiRequestAllItems(
 		if (responseData.LastEvaluatedKey) {
 			body!.ExclusiveStartKey = responseData.LastEvaluatedKey;
 		}
-		returnData.push(...responseData.Items);
+		returnData.push(...(responseData.Items as IDataObject[]));
 	} while (responseData.LastEvaluatedKey !== undefined);
 
 	return returnData;

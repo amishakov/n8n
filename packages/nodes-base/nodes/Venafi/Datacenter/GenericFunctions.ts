@@ -1,28 +1,26 @@
-import { OptionsWithUri } from 'request';
-
-import {
+import get from 'lodash/get';
+import { ApplicationError } from 'n8n-workflow';
+import type {
+	IDataObject,
 	IExecuteFunctions,
-	IExecuteSingleFunctions,
+	IHttpRequestMethods,
 	ILoadOptionsFunctions,
 	IPollFunctions,
-} from 'n8n-core';
-
-import { IDataObject } from 'n8n-workflow';
-
-import { get } from 'lodash';
+	IRequestOptions,
+} from 'n8n-workflow';
 
 export async function venafiApiRequest(
-	this: IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions | IPollFunctions,
-	method: string,
+	this: IExecuteFunctions | ILoadOptionsFunctions | IPollFunctions,
+	method: IHttpRequestMethods,
 	resource: string,
 	body: IDataObject = {},
 	qs: IDataObject = {},
 	uri?: string,
 	headers: IDataObject = {},
 ): Promise<any> {
-	const credentials = (await this.getCredentials('venafiTlsProtectDatacenterApi')) as IDataObject;
+	const credentials = await this.getCredentials('venafiTlsProtectDatacenterApi');
 
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		headers: {
 			'Content-Type': 'application/json',
 		},
@@ -30,7 +28,7 @@ export async function venafiApiRequest(
 		body,
 		qs,
 		rejectUnauthorized: !credentials.allowUnauthorizedCerts,
-		uri: uri ?? `${credentials.domain}${resource}`,
+		uri: uri || `${credentials.domain}${resource}`,
 		json: true,
 	};
 
@@ -52,7 +50,10 @@ export async function venafiApiRequest(
 
 			errors = errors.map((e: IDataObject) => e.message);
 			// Try to return the error prettier
-			throw new Error(`Venafi error response [${error.statusCode}]: ${errors.join('|')}`);
+			throw new ApplicationError(
+				`Venafi error response [${error.statusCode}]: ${errors.join('|')}`,
+				{ level: 'warning' },
+			);
 		}
 		throw error;
 	}
@@ -61,7 +62,7 @@ export async function venafiApiRequest(
 export async function venafiApiRequestAllItems(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
 	propertyName: string,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	body: IDataObject = {},
 	query: IDataObject = {},
@@ -73,7 +74,7 @@ export async function venafiApiRequestAllItems(
 	do {
 		responseData = await venafiApiRequest.call(this, method, endpoint, body, query);
 		endpoint = get(responseData, '_links[0].Next');
-		returnData.push.apply(returnData, responseData[propertyName]);
+		returnData.push.apply(returnData, responseData[propertyName] as IDataObject[]);
 	} while (responseData._links?.[0].Next);
 
 	return returnData;

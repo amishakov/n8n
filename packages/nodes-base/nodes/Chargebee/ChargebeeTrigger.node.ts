@@ -1,6 +1,11 @@
-import { IWebhookFunctions } from 'n8n-core';
-
-import { INodeType, INodeTypeDescription, IWebhookResponseData } from 'n8n-workflow';
+import {
+	type IDataObject,
+	type IWebhookFunctions,
+	type INodeType,
+	type INodeTypeDescription,
+	type IWebhookResponseData,
+	NodeConnectionType,
+} from 'n8n-workflow';
 
 export class ChargebeeTrigger implements INodeType {
 	description: INodeTypeDescription = {
@@ -15,7 +20,7 @@ export class ChargebeeTrigger implements INodeType {
 			name: 'Chargebee Trigger',
 		},
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		webhooks: [
 			{
 				name: 'default',
@@ -236,7 +241,7 @@ export class ChargebeeTrigger implements INodeType {
 		}
 
 		return {
-			workflowData: [this.helpers.returnJsonArray(req.body)],
+			workflowData: [this.helpers.returnJsonArray(req.body as IDataObject[])],
 		};
 	}
 }

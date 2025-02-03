@@ -1,4 +1,4 @@
-import { IAuthenticateGeneric, ICredentialType, INodeProperties } from 'n8n-workflow';
+import type { IAuthenticateGeneric, ICredentialType, INodeProperties } from 'n8n-workflow';
 
 export class AirtableApi implements ICredentialType {
 	name = 'airtableApi';
@@ -8,6 +8,13 @@ export class AirtableApi implements ICredentialType {
 	documentationUrl = 'airtable';
 
 	properties: INodeProperties[] = [
+		{
+			displayName:
+				"This type of connection (API Key) was deprecated and can't be used anymore. Please create a new credential of type 'Access Token' instead.",
+			name: 'deprecated',
+			type: 'notice',
+			default: '',
+		},
 		{
 			displayName: 'API Key',
 			name: 'apiKey',

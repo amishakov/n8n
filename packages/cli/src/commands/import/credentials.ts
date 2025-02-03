@@ -1,210 +1,265 @@
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
-/* eslint-disable no-restricted-syntax */
-/* eslint-disable @typescript-eslint/no-shadow */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable no-await-in-loop */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable no-console */
-import { Command, flags } from '@oclif/command';
-
-import { Credentials, UserSettings } from 'n8n-core';
-
-import { LoggerProxy } from 'n8n-workflow';
-
-import fs from 'fs';
+import { Container } from '@n8n/di';
+// eslint-disable-next-line n8n-local-rules/misplaced-n8n-typeorm-import
+import type { EntityManager } from '@n8n/typeorm';
+import { Flags } from '@oclif/core';
 import glob from 'fast-glob';
-import type { EntityManager } from 'typeorm';
-import { getLogger } from '@/Logger';
-import * as Db from '@/Db';
-import { User } from '@db/entities/User';
-import { SharedCredentials } from '@db/entities/SharedCredentials';
-import { Role } from '@db/entities/Role';
-import { CredentialsEntity } from '@db/entities/CredentialsEntity';
+import fs from 'fs';
+import { Cipher } from 'n8n-core';
+import type { ICredentialsEncrypted } from 'n8n-workflow';
+import { ApplicationError, jsonParse } from 'n8n-workflow';
 
-const FIX_INSTRUCTION =
-	'Please fix the database by running ./packages/cli/bin/n8n user-management:reset';
+import { UM_FIX_INSTRUCTION } from '@/constants';
+import { CredentialsEntity } from '@/databases/entities/credentials-entity';
+import { Project } from '@/databases/entities/project';
+import { SharedCredentials } from '@/databases/entities/shared-credentials';
+import { User } from '@/databases/entities/user';
+import { ProjectRepository } from '@/databases/repositories/project.repository';
+import * as Db from '@/db';
 
-export class ImportCredentialsCommand extends Command {
+import { BaseCommand } from '../base-command';
+
+export class ImportCredentialsCommand extends BaseCommand {
 	static description = 'Import credentials';
 
 	static examples = [
 		'$ n8n import:credentials --input=file.json',
 		'$ n8n import:credentials --separate --input=backups/latest/',
 		'$ n8n import:credentials --input=file.json --userId=1d64c3d2-85fe-4a83-a649-e446b07b3aae',
+		'$ n8n import:credentials --input=file.json --projectId=Ox8O54VQrmBrb4qL',
 		'$ n8n import:credentials --separate --input=backups/latest/ --userId=1d64c3d2-85fe-4a83-a649-e446b07b3aae',
 	];
 
 	static flags = {
-		help: flags.help({ char: 'h' }),
-		input: flags.string({
+		help: Flags.help({ char: 'h' }),
+		input: Flags.string({
 			char: 'i',
 			description: 'Input file name or directory if --separate is used',
 		}),
-		separate: flags.boolean({
+		separate: Flags.boolean({
 			description: 'Imports *.json files from directory provided by --input',
 		}),
-		userId: flags.string({
+		userId: Flags.string({
 			description: 'The ID of the user to assign the imported credentials to',
+		}),
+		projectId: Flags.string({
+			description: 'The ID of the project to assign the imported credential to',
 		}),
 	};
 
-	ownerCredentialRole: Role;
-
-	transactionManager: EntityManager;
+	private transactionManager: EntityManager;
 
 	async run(): Promise<void> {
-		const logger = getLogger();
-		LoggerProxy.init(logger);
-
-		const { flags } = this.parse(ImportCredentialsCommand);
+		const { flags } = await this.parse(ImportCredentialsCommand);
 
 		if (!flags.input) {
-			console.info('An input file or directory with --input must be provided');
+			this.logger.info('An input file or directory with --input must be provided');
 			return;
 		}
 
 		if (flags.separate) {
 			if (fs.existsSync(flags.input)) {
 				if (!fs.lstatSync(flags.input).isDirectory()) {
-					console.info('The argument to --input must be a directory');
+					this.logger.info('The argument to --input must be a directory');
 					return;
 				}
 			}
 		}
 
-		let totalImported = 0;
+		if (flags.projectId && flags.userId) {
+			throw new ApplicationError(
+				'You cannot use `--userId` and `--projectId` together. Use one or the other.',
+			);
+		}
 
-		try {
-			await Db.init();
+		const credentials = await this.readCredentials(flags.input, flags.separate);
 
-			await this.initOwnerCredentialRole();
-			const user = flags.userId ? await this.getAssignee(flags.userId) : await this.getOwner();
+		await Db.getConnection().transaction(async (transactionManager) => {
+			this.transactionManager = transactionManager;
 
-			// Make sure the settings exist
-			await UserSettings.prepareUserSettings();
+			const project = await this.getProject(flags.userId, flags.projectId);
 
-			const encryptionKey = await UserSettings.getEncryptionKey();
+			const result = await this.checkRelations(credentials, flags.projectId, flags.userId);
 
-			if (flags.separate) {
-				let { input: inputPath } = flags;
-
-				if (process.platform === 'win32') {
-					inputPath = inputPath.replace(/\\/g, '/');
-				}
-
-				const files = await glob('*.json', {
-					cwd: inputPath,
-					absolute: true,
-				});
-
-				totalImported = files.length;
-
-				await Db.getConnection().transaction(async (transactionManager) => {
-					this.transactionManager = transactionManager;
-					for (const file of files) {
-						const credential = JSON.parse(fs.readFileSync(file, { encoding: 'utf8' }));
-
-						if (typeof credential.data === 'object') {
-							// plain data / decrypted input. Should be encrypted first.
-							Credentials.prototype.setData.call(credential, credential.data, encryptionKey);
-						}
-
-						await this.storeCredential(credential, user);
-					}
-				});
-
-				this.reportSuccess(totalImported);
-				process.exit();
+			if (!result.success) {
+				throw new ApplicationError(result.message);
 			}
 
-			const credentials = JSON.parse(fs.readFileSync(flags.input, { encoding: 'utf8' }));
+			for (const credential of credentials) {
+				await this.storeCredential(credential, project);
+			}
+		});
 
-			totalImported = credentials.length;
+		this.reportSuccess(credentials.length);
+	}
 
-			if (!Array.isArray(credentials)) {
-				throw new Error(
+	async catch(error: Error) {
+		this.logger.error(
+			'An error occurred while importing credentials. See log messages for details.',
+		);
+		this.logger.error(error.message);
+	}
+
+	private reportSuccess(total: number) {
+		this.logger.info(
+			`Successfully imported ${total} ${total === 1 ? 'credential.' : 'credentials.'}`,
+		);
+	}
+
+	private async storeCredential(credential: Partial<CredentialsEntity>, project: Project) {
+		const result = await this.transactionManager.upsert(CredentialsEntity, credential, ['id']);
+
+		const sharingExists = await this.transactionManager.existsBy(SharedCredentials, {
+			credentialsId: credential.id,
+			role: 'credential:owner',
+		});
+
+		if (!sharingExists) {
+			await this.transactionManager.upsert(
+				SharedCredentials,
+				{
+					credentialsId: result.identifiers[0].id as string,
+					role: 'credential:owner',
+					projectId: project.id,
+				},
+				['credentialsId', 'projectId'],
+			);
+		}
+	}
+
+	private async checkRelations(
+		credentials: ICredentialsEncrypted[],
+		projectId?: string,
+		userId?: string,
+	) {
+		// The credential is not supposed to be re-owned.
+		if (!projectId && !userId) {
+			return {
+				success: true as const,
+				message: undefined,
+			};
+		}
+
+		for (const credential of credentials) {
+			if (credential.id === undefined) {
+				continue;
+			}
+
+			if (!(await this.credentialExists(credential.id))) {
+				continue;
+			}
+
+			const { user, project: ownerProject } = await this.getCredentialOwner(credential.id);
+
+			if (!ownerProject) {
+				continue;
+			}
+
+			if (ownerProject.id !== projectId) {
+				const currentOwner =
+					ownerProject.type === 'personal'
+						? `the user with the ID "${user.id}"`
+						: `the project with the ID "${ownerProject.id}"`;
+				const newOwner = userId
+					? // The user passed in `--userId`, so let's use the user ID in the error
+						// message as opposed to the project ID.
+						`the user with the ID "${userId}"`
+					: `the project with the ID "${projectId}"`;
+
+				return {
+					success: false as const,
+					message: `The credential with ID "${credential.id}" is already owned by ${currentOwner}. It can't be re-owned by ${newOwner}.`,
+				};
+			}
+		}
+
+		return {
+			success: true as const,
+			message: undefined,
+		};
+	}
+
+	private async readCredentials(path: string, separate: boolean): Promise<ICredentialsEncrypted[]> {
+		const cipher = Container.get(Cipher);
+
+		if (process.platform === 'win32') {
+			path = path.replace(/\\/g, '/');
+		}
+
+		let credentials: ICredentialsEncrypted[];
+
+		if (separate) {
+			const files = await glob('*.json', {
+				cwd: path,
+				absolute: true,
+			});
+
+			credentials = files.map((file) =>
+				jsonParse<ICredentialsEncrypted>(fs.readFileSync(file, { encoding: 'utf8' })),
+			);
+		} else {
+			const credentialsUnchecked = jsonParse<ICredentialsEncrypted[]>(
+				fs.readFileSync(path, { encoding: 'utf8' }),
+			);
+
+			if (!Array.isArray(credentialsUnchecked)) {
+				throw new ApplicationError(
 					'File does not seem to contain credentials. Make sure the credentials are contained in an array.',
 				);
 			}
 
-			await Db.getConnection().transaction(async (transactionManager) => {
-				this.transactionManager = transactionManager;
-				for (const credential of credentials) {
-					if (typeof credential.data === 'object') {
-						// plain data / decrypted input. Should be encrypted first.
-						Credentials.prototype.setData.call(credential, credential.data, encryptionKey);
-					}
-					await this.storeCredential(credential, user);
-				}
+			credentials = credentialsUnchecked;
+		}
+
+		return credentials.map((credential) => {
+			if (typeof credential.data === 'object') {
+				// plain data / decrypted input. Should be encrypted first.
+				credential.data = cipher.encrypt(credential.data);
+			}
+
+			return credential;
+		});
+	}
+
+	private async getCredentialOwner(credentialsId: string) {
+		const sharedCredential = await this.transactionManager.findOne(SharedCredentials, {
+			where: { credentialsId, role: 'credential:owner' },
+			relations: { project: true },
+		});
+
+		if (sharedCredential && sharedCredential.project.type === 'personal') {
+			const user = await this.transactionManager.findOneByOrFail(User, {
+				projectRelations: {
+					role: 'project:personalOwner',
+					projectId: sharedCredential.projectId,
+				},
 			});
 
-			this.reportSuccess(totalImported);
-			process.exit();
-		} catch (error) {
-			console.error('An error occurred while importing credentials. See log messages for details.');
-			if (error instanceof Error) logger.error(error.message);
-			this.exit(1);
-		}
-	}
-
-	private reportSuccess(total: number) {
-		console.info(`Successfully imported ${total} ${total === 1 ? 'credential.' : 'credentials.'}`);
-	}
-
-	private async initOwnerCredentialRole() {
-		const ownerCredentialRole = await Db.collections.Role.findOne({
-			where: { name: 'owner', scope: 'credential' },
-		});
-
-		if (!ownerCredentialRole) {
-			throw new Error(`Failed to find owner credential role. ${FIX_INSTRUCTION}`);
+			return { user, project: sharedCredential.project };
 		}
 
-		this.ownerCredentialRole = ownerCredentialRole;
+		return {};
 	}
 
-	private async storeCredential(credential: object, user: User) {
-		const newCredential = new CredentialsEntity();
-
-		Object.assign(newCredential, credential);
-
-		const savedCredential = await this.transactionManager.save<CredentialsEntity>(newCredential);
-
-		const newSharedCredential = new SharedCredentials();
-
-		Object.assign(newSharedCredential, {
-			credentials: savedCredential,
-			user,
-			role: this.ownerCredentialRole,
-		});
-
-		await this.transactionManager.save<SharedCredentials>(newSharedCredential);
+	private async credentialExists(credentialId: string) {
+		return await this.transactionManager.existsBy(CredentialsEntity, { id: credentialId });
 	}
 
-	private async getOwner() {
-		const ownerGlobalRole = await Db.collections.Role.findOne({
-			where: { name: 'owner', scope: 'global' },
-		});
-
-		const owner =
-			ownerGlobalRole &&
-			(await Db.collections.User.findOneBy({ globalRoleId: ownerGlobalRole.id }));
-
-		if (!owner) {
-			throw new Error(`Failed to find owner. ${FIX_INSTRUCTION}`);
+	private async getProject(userId?: string, projectId?: string) {
+		if (projectId) {
+			return await this.transactionManager.findOneByOrFail(Project, { id: projectId });
 		}
 
-		return owner;
-	}
-
-	private async getAssignee(userId: string) {
-		const user = await Db.collections.User.findOneBy({ id: userId });
-
-		if (!user) {
-			throw new Error(`Failed to find user with ID ${userId}`);
+		if (!userId) {
+			const owner = await this.transactionManager.findOneBy(User, { role: 'global:owner' });
+			if (!owner) {
+				throw new ApplicationError(`Failed to find owner. ${UM_FIX_INSTRUCTION}`);
+			}
+			userId = owner.id;
 		}
 
-		return user;
+		return await Container.get(ProjectRepository).getPersonalProjectForUserOrFail(
+			userId,
+			this.transactionManager,
+		);
 	}
 }

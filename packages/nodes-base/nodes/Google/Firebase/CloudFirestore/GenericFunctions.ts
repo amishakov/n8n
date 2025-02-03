@@ -1,21 +1,25 @@
-import { OptionsWithUri } from 'request';
-
-import { IExecuteFunctions, IExecuteSingleFunctions, ILoadOptionsFunctions } from 'n8n-core';
-
-import { IDataObject, NodeApiError } from 'n8n-workflow';
-
 import moment from 'moment-timezone';
+import type {
+	IExecuteFunctions,
+	ILoadOptionsFunctions,
+	IDataObject,
+	JsonObject,
+	IHttpRequestMethods,
+	IRequestOptions,
+} from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
+
+import { getGoogleAccessToken } from '../../GenericFunctions';
 
 export async function googleApiRequest(
-	this: IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions,
-	method: string,
+	this: IExecuteFunctions | ILoadOptionsFunctions,
+	method: IHttpRequestMethods,
 	resource: string,
-
 	body: any = {},
 	qs: IDataObject = {},
 	uri: string | null = null,
 ): Promise<any> {
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		headers: {
 			'Content-Type': 'application/json',
 		},
@@ -25,29 +29,36 @@ export async function googleApiRequest(
 		qsStringifyOptions: {
 			arrayFormat: 'repeat',
 		},
-		uri: uri ?? `https://firestore.googleapis.com/v1/projects${resource}`,
+		uri: uri || `https://firestore.googleapis.com/v1/projects${resource}`,
 		json: true,
 	};
 	try {
-		if (Object.keys(body).length === 0) {
+		if (Object.keys(body as IDataObject).length === 0) {
 			delete options.body;
 		}
 
-		//@ts-ignore
-		return await this.helpers.requestOAuth2.call(
-			this,
-			'googleFirebaseCloudFirestoreOAuth2Api',
-			options,
-		);
+		let credentialType = 'googleFirebaseCloudFirestoreOAuth2Api';
+		const authentication = this.getNodeParameter('authentication', 0) as string;
+
+		if (authentication === 'serviceAccount') {
+			const credentials = await this.getCredentials('googleApi');
+			credentialType = 'googleApi';
+
+			const { access_token } = await getGoogleAccessToken.call(this, credentials, 'firestore');
+
+			(options.headers as IDataObject).Authorization = `Bearer ${access_token}`;
+		}
+
+		return await this.helpers.requestWithAuthentication.call(this, credentialType, options);
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
 export async function googleApiRequestAllItems(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
 	propertyName: string,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 
 	body: any = {},
@@ -62,7 +73,7 @@ export async function googleApiRequestAllItems(
 	do {
 		responseData = await googleApiRequest.call(this, method, endpoint, body, query, uri);
 		query.pageToken = responseData.nextPageToken;
-		returnData.push.apply(returnData, responseData[propertyName]);
+		returnData.push.apply(returnData, responseData[propertyName] as IDataObject[]);
 	} while (responseData.nextPageToken !== undefined && responseData.nextPageToken !== '');
 
 	return returnData;
@@ -79,7 +90,7 @@ export function jsonToDocument(value: string | number | IDataObject | IDataObjec
 		return { booleanValue: value };
 	} else if (value === null) {
 		return { nullValue: null };
-	} else if (!isNaN(value as number)) {
+	} else if (value !== '' && !isNaN(value as number)) {
 		if (value.toString().indexOf('.') !== -1) {
 			return { doubleValue: value };
 		} else {
@@ -96,7 +107,7 @@ export function jsonToDocument(value: string | number | IDataObject | IDataObjec
 		const obj = {};
 		for (const o of Object.keys(value)) {
 			//@ts-ignore
-			obj[o] = jsonToDocument(value[o]);
+			obj[o] = jsonToDocument(value[o] as IDataObject);
 		}
 		return { mapValue: { fields: obj } };
 	}
@@ -135,7 +146,7 @@ export function documentToJson(fields: IDataObject): IDataObject {
 				return value as IDataObject;
 			} else if ('mapValue' === key) {
 				//@ts-ignore
-				return documentToJson(value!.fields || {});
+				return documentToJson((value!.fields as IDataObject) || {});
 			} else if ('arrayValue' === key) {
 				// @ts-ignore
 				const list = value.values as IDataObject[];

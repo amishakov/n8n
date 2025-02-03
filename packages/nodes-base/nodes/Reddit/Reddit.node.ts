@@ -1,23 +1,18 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
-	NodeApiError,
+	JsonObject,
 } from 'n8n-workflow';
+import { NodeApiError, NodeConnectionType } from 'n8n-workflow';
 
 import { handleListing, redditApiRequest } from './GenericFunctions';
-
 import { postCommentFields, postCommentOperations } from './PostCommentDescription';
-
 import { postFields, postOperations } from './PostDescription';
-
 import { profileFields, profileOperations } from './ProfileDescription';
-
 import { subredditFields, subredditOperations } from './SubredditDescription';
-
 import { userFields, userOperations } from './UserDescription';
 
 export class Reddit implements INodeType {
@@ -32,8 +27,8 @@ export class Reddit implements INodeType {
 		defaults: {
 			name: 'Reddit',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'redditOAuth2Api',
@@ -321,12 +316,12 @@ export class Reddit implements INodeType {
 						} else if (details === 'friends') {
 							responseData = responseData.data.children;
 							if (!responseData.length) {
-								throw new NodeApiError(this.getNode(), responseData);
+								throw new NodeApiError(this.getNode(), responseData as JsonObject);
 							}
 						} else if (details === 'karma') {
 							responseData = responseData.data;
 							if (!responseData.length) {
-								throw new NodeApiError(this.getNode(), responseData);
+								throw new NodeApiError(this.getNode(), responseData as JsonObject);
 							}
 						} else if (details === 'trophies') {
 							responseData = responseData.data.trophies.map((trophy: IDataObject) => trophy.data);
@@ -422,7 +417,7 @@ export class Reddit implements INodeType {
 				}
 
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as JsonObject),
 					{ itemData: { item: i } },
 				);
 
@@ -440,6 +435,6 @@ export class Reddit implements INodeType {
 			}
 		}
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

@@ -1,130 +1,87 @@
-import { OptionsWithUri } from 'request';
-
-import { IExecuteFunctions, IExecuteSingleFunctions, ILoadOptionsFunctions } from 'n8n-core';
-
-import {
-	// ICredentialDataDecryptedObject,
-	ICredentialTestFunctions,
+import type {
 	IDataObject,
+	IExecuteFunctions,
+	IHttpRequestMethods,
+	ILoadOptionsFunctions,
 	INodeProperties,
-	NodeApiError,
+	IRequestOptions,
+	JsonObject,
 } from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
 
-import moment from 'moment-timezone';
+import { getSendAndWaitConfig } from '../../../utils/sendAndWait/utils';
+import { getGoogleAccessToken } from '../GenericFunctions';
 
-import jwt from 'jsonwebtoken';
+async function googleServiceAccountApiRequest(
+	this: IExecuteFunctions | ILoadOptionsFunctions,
+	options: IRequestOptions,
+	noCredentials = false,
+): Promise<any> {
+	if (noCredentials) {
+		return await this.helpers.request(options);
+	}
 
-interface IGoogleAuthCredentials {
-	delegatedEmail?: string;
-	email: string;
-	inpersonate: boolean;
-	privateKey: string;
-}
+	const credentials = await this.getCredentials('googleApi');
 
-export async function getAccessToken(
-	this:
-		| IExecuteFunctions
-		| IExecuteSingleFunctions
-		| ILoadOptionsFunctions
-		| ICredentialTestFunctions,
-	credentials: IGoogleAuthCredentials,
-): Promise<IDataObject> {
-	//https://developers.google.com/identity/protocols/oauth2/service-account#httprest
+	const { access_token } = await getGoogleAccessToken.call(this, credentials, 'chat');
+	options.headers!.Authorization = `Bearer ${access_token}`;
 
-	const scopes = ['https://www.googleapis.com/auth/chat.bot'];
-
-	const now = moment().unix();
-
-	credentials.email = credentials.email.trim();
-	const privateKey = credentials.privateKey.replace(/\\n/g, '\n').trim();
-
-	const signature = jwt.sign(
-		{
-			iss: credentials.email,
-			sub: credentials.delegatedEmail ?? credentials.email,
-			scope: scopes.join(' '),
-			aud: 'https://oauth2.googleapis.com/token',
-			iat: now,
-			exp: now + 3600,
-		},
-		privateKey,
-		{
-			algorithm: 'RS256',
-			header: {
-				kid: privateKey,
-				typ: 'JWT',
-				alg: 'RS256',
-			},
-		},
-	);
-
-	const options: OptionsWithUri = {
-		headers: {
-			'Content-Type': 'application/x-www-form-urlencoded',
-		},
-		method: 'POST',
-		form: {
-			grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-			assertion: signature,
-		},
-		uri: 'https://oauth2.googleapis.com/token',
-		json: true,
-	};
-
-	return this.helpers.request(options);
+	return await this.helpers.request(options);
 }
 
 export async function googleApiRequest(
-	this: IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions,
-	method: string,
+	this: IExecuteFunctions | ILoadOptionsFunctions,
+	method: IHttpRequestMethods,
 	resource: string,
-
-	body: any = {},
+	body: IDataObject = {},
 	qs: IDataObject = {},
 	uri?: string,
 	noCredentials = false,
 	encoding?: null | undefined,
-): Promise<any> {
-	const options: OptionsWithUri = {
+) {
+	const options: IRequestOptions = {
 		headers: {
+			Accept: 'application/json',
 			'Content-Type': 'application/json',
 		},
 		method,
 		body,
 		qs,
-		uri: uri ?? `https://chat.googleapis.com${resource}`,
+		uri: uri || `https://chat.googleapis.com${resource}`,
+		qsStringifyOptions: {
+			arrayFormat: 'repeat',
+		},
 		json: true,
 	};
-
-	if (Object.keys(body).length === 0) {
-		delete options.body;
-	}
 
 	if (encoding === null) {
 		options.encoding = null;
 	}
 
-	let responseData: IDataObject | undefined;
-	try {
-		if (noCredentials) {
-			responseData = await this.helpers.request(options);
-		} else {
-			const credentials = await this.getCredentials('googleApi');
+	if (Object.keys(body).length === 0) {
+		delete options.body;
+	}
 
-			const { access_token } = await getAccessToken.call(
+	let responseData;
+
+	try {
+		if (noCredentials || this.getNodeParameter('authentication', 0) === 'serviceAccount') {
+			responseData = await googleServiceAccountApiRequest.call(this, options, noCredentials);
+		} else {
+			responseData = await this.helpers.requestWithAuthentication.call(
 				this,
-				credentials as unknown as IGoogleAuthCredentials,
+				'googleChatOAuth2Api',
+				options,
 			);
-			options.headers!.Authorization = `Bearer ${access_token}`;
-			responseData = await this.helpers.request(options);
 		}
 	} catch (error) {
 		if (error.code === 'ERR_OSSL_PEM_NO_START_LINE') {
 			error.statusCode = '401';
 		}
 
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
+
 	if (Object.keys(responseData as IDataObject).length !== 0) {
 		return responseData;
 	} else {
@@ -135,7 +92,7 @@ export async function googleApiRequest(
 export async function googleApiRequestAllItems(
 	this: IExecuteFunctions | ILoadOptionsFunctions,
 	propertyName: string,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 
 	body: any = {},
@@ -149,7 +106,7 @@ export async function googleApiRequestAllItems(
 	do {
 		responseData = await googleApiRequest.call(this, method, endpoint, body, query);
 		query.pageToken = responseData.nextPageToken;
-		returnData.push.apply(returnData, responseData[propertyName]);
+		returnData.push.apply(returnData, responseData[propertyName] as IDataObject[]);
 	} while (responseData.nextPageToken !== undefined && responseData.nextPageToken !== '');
 
 	return returnData;
@@ -199,4 +156,27 @@ export function getPagingParameters(resource: string, operation = 'getAll') {
 		},
 	];
 	return pagingParameters;
+}
+
+export function createSendAndWaitMessageBody(context: IExecuteFunctions) {
+	const config = getSendAndWaitConfig(context);
+
+	const instanceId = context.getInstanceId();
+	const attributionText = '_This_ _message_ _was_ _sent_ _automatically_ _with_';
+	const link = `https://n8n.io/?utm_source=n8n-internal&utm_medium=powered_by&utm_campaign=${encodeURIComponent(
+		'n8n-nodes-base.telegram',
+	)}${instanceId ? '_' + instanceId : ''}`;
+	const attribution = `${attributionText} _<${link}|n8n>_`;
+
+	const buttons: string[] = config.options.map(
+		(option) => `*<${`${config.url}?approved=${option.value}`}|${option.label}>*`,
+	);
+
+	const text = `${config.message}\n\n\n${buttons.join('   ')}\n\n${attribution}`;
+
+	const body = {
+		text,
+	};
+
+	return body;
 }

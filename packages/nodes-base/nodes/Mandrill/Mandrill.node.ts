@@ -1,14 +1,17 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import isEmpty from 'lodash/isEmpty';
+import map from 'lodash/map';
+import moment from 'moment-timezone';
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
-	NodeApiError,
+	JsonObject,
 } from 'n8n-workflow';
+import { NodeConnectionType, NodeApiError } from 'n8n-workflow';
 
 import {
 	getGoogleAnalyticsDomainsArray,
@@ -17,10 +20,6 @@ import {
 	mandrillApiRequest,
 	validateJSON,
 } from './GenericFunctions';
-
-import moment from 'moment';
-
-import _ from 'lodash';
 
 interface Attachments {
 	type: string;
@@ -106,8 +105,8 @@ export class Mandrill implements INodeType {
 		defaults: {
 			name: 'Mandrill',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'mandrillApi',
@@ -171,7 +170,7 @@ export class Mandrill implements INodeType {
 				options: [],
 				required: true,
 				description:
-					'The template you want to send. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+					'The template you want to send. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 			},
 			{
 				displayName: 'From Email',
@@ -216,7 +215,7 @@ export class Mandrill implements INodeType {
 				displayName: 'Options',
 				name: 'options',
 				type: 'collection',
-				placeholder: 'Add Option',
+				placeholder: 'Add option',
 				default: {},
 				displayOptions: {
 					show: {
@@ -684,7 +683,7 @@ export class Mandrill implements INodeType {
 
 	methods = {
 		loadOptions: {
-			// Get all the available templates to display them to user so that he can
+			// Get all the available templates to display them to user so that they can
 			// select them easily
 			async getTemplates(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -692,7 +691,7 @@ export class Mandrill implements INodeType {
 				try {
 					templates = await mandrillApiRequest.call(this, '/templates', 'POST', '/list');
 				} catch (error) {
-					throw new NodeApiError(this.getNode(), error);
+					throw new NodeApiError(this.getNode(), error as JsonObject);
 				}
 				for (const template of templates) {
 					const templateName = template.name;
@@ -792,9 +791,9 @@ export class Mandrill implements INodeType {
 						);
 					} else {
 						const headersUi = this.getNodeParameter('headersUi', i) as IDataObject;
-						if (!_.isEmpty(headersUi)) {
+						if (!isEmpty(headersUi)) {
 							// @ts-ignore
-							body.message.headers = _.map(headersUi.headersValues, (o) => {
+							body.message.headers = map(headersUi.headersValues, (o) => {
 								const aux: IDataObject = {};
 								// @ts-ignore
 								aux[o.name] = o.value;
@@ -803,9 +802,9 @@ export class Mandrill implements INodeType {
 						}
 
 						const metadataUi = this.getNodeParameter('metadataUi', i) as IDataObject;
-						if (!_.isEmpty(metadataUi)) {
+						if (!isEmpty(metadataUi)) {
 							// @ts-ignore
-							body.message.metadata = _.map(metadataUi.metadataValues, (o: IDataObject) => {
+							body.message.metadata = map(metadataUi.metadataValues, (o: IDataObject) => {
 								const aux: IDataObject = {};
 								aux[o.name as string] = o.value;
 								return aux;
@@ -813,9 +812,9 @@ export class Mandrill implements INodeType {
 						}
 
 						const mergeVarsUi = this.getNodeParameter('mergeVarsUi', i) as IDataObject;
-						if (!_.isEmpty(mergeVarsUi)) {
+						if (!isEmpty(mergeVarsUi)) {
 							// @ts-ignore
-							body.message.global_merge_vars = _.map(
+							body.message.global_merge_vars = map(
 								// @ts-ignore
 								mergeVarsUi.mergeVarsValues,
 								(o: IDataObject) => {
@@ -830,15 +829,14 @@ export class Mandrill implements INodeType {
 						const attachmentsUi = this.getNodeParameter('attachmentsUi', i) as IDataObject;
 						let attachmentsBinary: Attachments[] = [],
 							attachmentsValues: Attachments[] = [];
-						if (!_.isEmpty(attachmentsUi)) {
+						if (!isEmpty(attachmentsUi)) {
 							if (
 								attachmentsUi.hasOwnProperty('attachmentsValues') &&
-								!_.isEmpty(attachmentsUi.attachmentsValues)
+								!isEmpty(attachmentsUi.attachmentsValues)
 							) {
 								// @ts-ignore
-								attachmentsValues = _.map(attachmentsUi.attachmentsValues, (o: IDataObject) => {
+								attachmentsValues = map(attachmentsUi.attachmentsValues, (o: IDataObject) => {
 									const aux: IDataObject = {};
-									// @ts-ignore
 									aux.name = o.name;
 									aux.content = o.content;
 									aux.type = o.type;
@@ -848,14 +846,14 @@ export class Mandrill implements INodeType {
 
 							if (
 								attachmentsUi.hasOwnProperty('attachmentsBinary') &&
-								!_.isEmpty(attachmentsUi.attachmentsBinary) &&
+								!isEmpty(attachmentsUi.attachmentsBinary) &&
 								items[i].binary
 							) {
 								// @ts-ignore
-								attachmentsBinary = _.map(attachmentsUi.attachmentsBinary, (o: IDataObject) => {
+								attachmentsBinary = map(attachmentsUi.attachmentsBinary, (o: IDataObject) => {
 									if (items[i].binary!.hasOwnProperty(o.property as string)) {
 										const aux: IDataObject = {};
-										aux.name = items[i].binary![o.property as string].fileName ?? 'unknown';
+										aux.name = items[i].binary![o.property as string].fileName || 'unknown';
 										aux.content = items[i].binary![o.property as string].data;
 										aux.type = items[i].binary![o.property as string].mimeType;
 										return aux;
@@ -885,7 +883,7 @@ export class Mandrill implements INodeType {
 				}
 
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as IDataObject[]),
 					{ itemData: { item: i } },
 				);
 
@@ -902,6 +900,6 @@ export class Mandrill implements INodeType {
 				throw error;
 			}
 		}
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

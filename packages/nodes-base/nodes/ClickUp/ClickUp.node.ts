@@ -1,55 +1,32 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import moment from 'moment-timezone';
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
-	NodeOperationError,
 } from 'n8n-workflow';
-
-import { clickupApiRequest, clickupApiRequestAllItems, validateJSON } from './GenericFunctions';
+import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
 import { checklistFields, checklistOperations } from './ChecklistDescription';
-
 import { checklistItemFields, checklistItemOperations } from './ChecklistItemDescription';
-
 import { commentFields, commentOperations } from './CommentDescription';
-
 import { folderFields, folderOperations } from './FolderDescription';
-
+import { clickupApiRequest, clickupApiRequestAllItems, validateJSON } from './GenericFunctions';
 import { goalFields, goalOperations } from './GoalDescription';
-
 import { goalKeyResultFields, goalKeyResultOperations } from './GoalKeyResultDescription';
-
-// import {
-// 	guestFields,
-// 	guestOperations,
-// } from './guestDescription';
-
-import { taskFields, taskOperations } from './TaskDescription';
-
-import { taskListFields, taskListOperations } from './TaskListDescription';
-
-import { taskTagFields, taskTagOperations } from './TaskTagDescription';
-
-import { spaceTagFields, spaceTagOperations } from './SpaceTagDescription';
-
-import { taskDependencyFields, taskDependencyOperations } from './TaskDependencyDescription';
-
-import { timeEntryFields, timeEntryOperations } from './TimeEntryDescription';
-
-import { timeEntryTagFields, timeEntryTagOperations } from './TimeEntryTagDescription';
-
 import { listFields, listOperations } from './ListDescription';
-
-import { ITask } from './TaskInterface';
-
-import { IList } from './ListInterface';
-
-import moment from 'moment-timezone';
+import type { IList } from './ListInterface';
+import { spaceTagFields, spaceTagOperations } from './SpaceTagDescription';
+import { taskDependencyFields, taskDependencyOperations } from './TaskDependencyDescription';
+import { taskFields, taskOperations } from './TaskDescription';
+import type { ITask } from './TaskInterface';
+import { taskListFields, taskListOperations } from './TaskListDescription';
+import { taskTagFields, taskTagOperations } from './TaskTagDescription';
+import { timeEntryFields, timeEntryOperations } from './TimeEntryDescription';
+import { timeEntryTagFields, timeEntryTagOperations } from './TimeEntryTagDescription';
 
 export class ClickUp implements INodeType {
 	description: INodeTypeDescription = {
@@ -63,8 +40,8 @@ export class ClickUp implements INodeType {
 		defaults: {
 			name: 'ClickUp',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'clickUpApi',
@@ -222,7 +199,7 @@ export class ClickUp implements INodeType {
 
 	methods = {
 		loadOptions: {
-			// Get all the available teams to display them to user so that he can
+			// Get all the available teams to display them to user so that they can
 			// select them easily
 			async getTeams(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -237,7 +214,7 @@ export class ClickUp implements INodeType {
 				}
 				return returnData;
 			},
-			// Get all the available spaces to display them to user so that he can
+			// Get all the available spaces to display them to user so that they can
 			// select them easily
 			async getSpaces(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const teamId = this.getCurrentNodeParameter('team') as string;
@@ -253,7 +230,7 @@ export class ClickUp implements INodeType {
 				}
 				return returnData;
 			},
-			// Get all the available folders to display them to user so that he can
+			// Get all the available folders to display them to user so that they can
 			// select them easily
 			async getFolders(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const spaceId = this.getCurrentNodeParameter('space') as string;
@@ -269,7 +246,7 @@ export class ClickUp implements INodeType {
 				}
 				return returnData;
 			},
-			// Get all the available lists to display them to user so that he can
+			// Get all the available lists to display them to user so that they can
 			// select them easily
 			async getLists(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const folderId = this.getCurrentNodeParameter('folder') as string;
@@ -285,7 +262,7 @@ export class ClickUp implements INodeType {
 				}
 				return returnData;
 			},
-			// Get all the available lists without a folder to display them to user so that he can
+			// Get all the available lists without a folder to display them to user so that they can
 			// select them easily
 			async getFolderlessLists(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const spaceId = this.getCurrentNodeParameter('space') as string;
@@ -301,7 +278,7 @@ export class ClickUp implements INodeType {
 				}
 				return returnData;
 			},
-			// Get all the available assignees to display them to user so that he can
+			// Get all the available assignees to display them to user so that they can
 			// select them easily
 			async getAssignees(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const listId = this.getCurrentNodeParameter('list') as string;
@@ -327,7 +304,7 @@ export class ClickUp implements INodeType {
 				}
 				return returnData;
 			},
-			// Get all the available tags to display them to user so that he can
+			// Get all the available tags to display them to user so that they can
 			// select them easily
 			async getTags(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const spaceId = this.getCurrentNodeParameter('space') as string;
@@ -343,7 +320,7 @@ export class ClickUp implements INodeType {
 				}
 				return returnData;
 			},
-			// Get all the available tags to display them to user so that he can
+			// Get all the available tags to display them to user so that they can
 			// select them easily
 			async getTimeEntryTags(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const teamId = this.getCurrentNodeParameter('team') as string;
@@ -363,7 +340,7 @@ export class ClickUp implements INodeType {
 				}
 				return returnData;
 			},
-			// Get all the available tags to display them to user so that he can
+			// Get all the available tags to display them to user so that they can
 			// select them easily
 			async getStatuses(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const listId = this.getCurrentNodeParameter('list') as string;
@@ -380,7 +357,7 @@ export class ClickUp implements INodeType {
 				return returnData;
 			},
 
-			// Get all the custom fields to display them to user so that he can
+			// Get all the custom fields to display them to user so that they can
 			// select them easily
 			async getCustomFields(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const listId = this.getCurrentNodeParameter('list') as string;
@@ -397,7 +374,7 @@ export class ClickUp implements INodeType {
 				return returnData;
 			},
 
-			// Get all the available lists to display them to user so that he can
+			// Get all the available lists to display them to user so that they can
 			// select them easily
 			async getTasks(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const listId = this.getCurrentNodeParameter('list') as string;
@@ -745,7 +722,7 @@ export class ClickUp implements INodeType {
 						) {
 							if (
 								additionalFields.stepsStart === undefined ||
-								!additionalFields.stepsEnd === undefined
+								additionalFields.stepsEnd === undefined
 							) {
 								throw new NodeOperationError(
 									this.getNode(),
@@ -1625,7 +1602,7 @@ export class ClickUp implements INodeType {
 				}
 
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as IDataObject[]),
 					{ itemData: { item: i } },
 				);
 				returnData.push(...executionData);
@@ -1637,6 +1614,6 @@ export class ClickUp implements INodeType {
 				throw error;
 			}
 		}
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

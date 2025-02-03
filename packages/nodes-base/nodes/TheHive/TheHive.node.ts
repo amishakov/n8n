@@ -1,29 +1,23 @@
 /* eslint-disable @typescript-eslint/dot-notation */
-import { IExecuteFunctions } from 'n8n-core';
-
+import set from 'lodash/set';
 import {
-	IDataObject,
-	ILoadOptionsFunctions,
-	INodeExecutionData,
-	INodeParameters,
-	INodePropertyOptions,
-	INodeType,
-	INodeTypeDescription,
-	NodeOperationError,
+	NodeConnectionType,
+	type IDataObject,
+	type IExecuteFunctions,
+	type IHttpRequestMethods,
+	type ILoadOptionsFunctions,
+	type INodeExecutionData,
+	type INodeParameters,
+	type INodePropertyOptions,
+	type INodeType,
+	type INodeTypeDescription,
 } from 'n8n-workflow';
 
 import { alertFields, alertOperations } from './descriptions/AlertDescription';
-
-import { observableFields, observableOperations } from './descriptions/ObservableDescription';
-
 import { caseFields, caseOperations } from './descriptions/CaseDescription';
-
-import { taskFields, taskOperations } from './descriptions/TaskDescription';
-
 import { logFields, logOperations } from './descriptions/LogDescription';
-
-import { And, Between, ContainsString, Eq, Id, In, IQueryObject, Parent } from './QueryFunctions';
-
+import { observableFields, observableOperations } from './descriptions/ObservableDescription';
+import { taskFields, taskOperations } from './descriptions/TaskDescription';
 import {
 	buildCustomFieldSearch,
 	mapResource,
@@ -34,8 +28,8 @@ import {
 	splitTags,
 	theHiveApiRequest,
 } from './GenericFunctions';
-
-import { set } from 'lodash';
+import type { IQueryObject } from './QueryFunctions';
+import { And, Between, ContainsString, Eq, Id, In, Parent } from './QueryFunctions';
 
 export class TheHive implements INodeType {
 	description: INodeTypeDescription = {
@@ -49,8 +43,8 @@ export class TheHive implements INodeType {
 		defaults: {
 			name: 'TheHive',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'theHiveApi',
@@ -159,7 +153,7 @@ export class TheHive implements INodeType {
 				const customFields =
 					version === 'v1'
 						? requestResult
-						: Object.keys(requestResult).map((key) => requestResult[key]);
+						: Object.keys(requestResult as IDataObject).map((key) => requestResult[key]);
 
 				for (const field of customFields) {
 					returnData.push({
@@ -218,7 +212,7 @@ export class TheHive implements INodeType {
 						};
 					});
 				} else {
-					returnData = Object.keys(dataTypes).map((key) => {
+					returnData = Object.keys(dataTypes as IDataObject).map((key) => {
 						const dataType = dataTypes[key] as string;
 
 						return {
@@ -312,7 +306,7 @@ export class TheHive implements INodeType {
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
-		const returnData: IDataObject[] = [];
+		const returnData: INodeExecutionData[] = [];
 		const length = items.length;
 		const qs: IDataObject = {};
 		let responseData;
@@ -324,7 +318,7 @@ export class TheHive implements INodeType {
 				if (resource === 'alert') {
 					if (operation === 'count') {
 						const filters = this.getNodeParameter('filters', i, {}) as INodeParameters;
-						const countQueryAttributs: any = prepareOptional(filters);
+						const countQueryAttributs = prepareOptional(filters);
 
 						const _countSearchQuery: IQueryObject = And();
 
@@ -426,28 +420,8 @@ export class TheHive implements INodeType {
 									element.data = artifactvalue.data as string;
 
 									if (artifactvalue.dataType === 'file') {
-										const item = items[i];
-
-										if (item.binary === undefined) {
-											throw new NodeOperationError(
-												this.getNode(),
-												'No binary data exists on item!',
-												{ itemIndex: i },
-											);
-										}
-
 										const binaryPropertyName = artifactvalue.binaryProperty as string;
-
-										if (item.binary[binaryPropertyName] === undefined) {
-											throw new NodeOperationError(
-												this.getNode(),
-												`No binary data property '${binaryPropertyName}' does not exists on item!`,
-												{ itemIndex: i },
-											);
-										}
-
-										const binaryData = item.binary[binaryPropertyName];
-
+										const binaryData = this.helpers.assertBinaryData(i, binaryPropertyName);
 										element.data = `${binaryData.fileName};${binaryData.mimeType};${binaryData.data}`;
 									}
 
@@ -536,7 +510,7 @@ export class TheHive implements INodeType {
 						const version = credentials.apiVersion;
 
 						const filters = this.getNodeParameter('filters', i, {}) as INodeParameters;
-						const queryAttributs: any = prepareOptional(filters);
+						const queryAttributs = prepareOptional(filters);
 						const options = this.getNodeParameter('options', i);
 
 						const _searchQuery: IQueryObject = And();
@@ -565,7 +539,7 @@ export class TheHive implements INodeType {
 
 						let endpoint;
 
-						let method;
+						let method: IHttpRequestMethods;
 
 						let body: IDataObject = {};
 
@@ -703,28 +677,8 @@ export class TheHive implements INodeType {
 									element.data = artifactvalue.data as string;
 
 									if (artifactvalue.dataType === 'file') {
-										const item = items[i];
-
-										if (item.binary === undefined) {
-											throw new NodeOperationError(
-												this.getNode(),
-												'No binary data exists on item!',
-												{ itemIndex: i },
-											);
-										}
-
 										const binaryPropertyName = artifactvalue.binaryProperty as string;
-
-										if (item.binary[binaryPropertyName] === undefined) {
-											throw new NodeOperationError(
-												this.getNode(),
-												`No binary data property '${binaryPropertyName}' does not exists on item!`,
-												{ itemIndex: i },
-											);
-										}
-
-										const binaryData = item.binary[binaryPropertyName];
-
+										const binaryData = this.helpers.assertBinaryData(i, binaryPropertyName);
 										element.data = `${binaryData.fileName};${binaryData.mimeType};${binaryData.data}`;
 									}
 
@@ -740,7 +694,7 @@ export class TheHive implements INodeType {
 
 				if (resource === 'observable') {
 					if (operation === 'count') {
-						const countQueryAttributs: any = prepareOptional(
+						const countQueryAttributs = prepareOptional(
 							this.getNodeParameter('filters', i, {}) as INodeParameters,
 						);
 						const _countSearchQuery: IQueryObject = And();
@@ -758,8 +712,12 @@ export class TheHive implements INodeType {
 								(_countSearchQuery['_and'] as IQueryObject[]).push(
 									Between(
 										'startDate',
-										countQueryAttributs['range']['dateRange']['fromDate'],
-										countQueryAttributs['range']['dateRange']['toDate'],
+										((countQueryAttributs['range'] as IDataObject)['dateRange'] as IDataObject)[
+											'fromDate'
+										],
+										((countQueryAttributs['range'] as IDataObject)['dateRange'] as IDataObject)[
+											'toDate'
+										],
 									),
 								);
 							} else {
@@ -900,25 +858,8 @@ export class TheHive implements INodeType {
 						let options: IDataObject = {};
 
 						if (body.dataType === 'file') {
-							const item = items[i];
-
-							if (item.binary === undefined) {
-								throw new NodeOperationError(this.getNode(), 'No binary data exists on item!', {
-									itemIndex: i,
-								});
-							}
-
 							const binaryPropertyName = this.getNodeParameter('binaryProperty', i);
-
-							if (item.binary[binaryPropertyName] === undefined) {
-								throw new NodeOperationError(
-									this.getNode(),
-									`No binary data property '${binaryPropertyName}' does not exists on item!`,
-									{ itemIndex: i },
-								);
-							}
-
-							const binaryData = item.binary[binaryPropertyName];
+							const binaryData = this.helpers.assertBinaryData(i, binaryPropertyName);
 							const dataBuffer = await this.helpers.getBinaryDataBuffer(i, binaryPropertyName);
 
 							options = {
@@ -958,7 +899,7 @@ export class TheHive implements INodeType {
 
 						let endpoint;
 
-						let method;
+						let method: IHttpRequestMethods;
 
 						let body: IDataObject = {};
 
@@ -999,7 +940,7 @@ export class TheHive implements INodeType {
 
 						let endpoint;
 
-						let method;
+						let method: IHttpRequestMethods;
 
 						let body: IDataObject = {};
 
@@ -1059,7 +1000,7 @@ export class TheHive implements INodeType {
 
 						const version = credentials.apiVersion;
 
-						const queryAttributs: any = prepareOptional(
+						const queryAttributs = prepareOptional(
 							this.getNodeParameter('filters', i, {}) as INodeParameters,
 						);
 
@@ -1080,8 +1021,12 @@ export class TheHive implements INodeType {
 								(_searchQuery['_and'] as IQueryObject[]).push(
 									Between(
 										'startDate',
-										queryAttributs['range']['dateRange']['fromDate'],
-										queryAttributs['range']['dateRange']['toDate'],
+										((queryAttributs['range'] as IDataObject)['dateRange'] as IDataObject)[
+											'fromDate'
+										],
+										((queryAttributs['range'] as IDataObject)['dateRange'] as IDataObject)[
+											'toDate'
+										],
 									),
 								);
 							} else {
@@ -1093,7 +1038,7 @@ export class TheHive implements INodeType {
 
 						let endpoint;
 
-						let method;
+						let method: IHttpRequestMethods;
 
 						let body: IDataObject = {};
 
@@ -1168,7 +1113,7 @@ export class TheHive implements INodeType {
 				if (resource === 'case') {
 					if (operation === 'count') {
 						const filters = this.getNodeParameter('filters', i, {}) as INodeParameters;
-						const countQueryAttributs: any = prepareOptional(filters);
+						const countQueryAttributs = prepareOptional(filters);
 
 						const _countSearchQuery: IQueryObject = And();
 
@@ -1301,7 +1246,7 @@ export class TheHive implements INodeType {
 
 						let endpoint;
 
-						let method;
+						let method: IHttpRequestMethods;
 
 						let body: IDataObject = {};
 
@@ -1337,7 +1282,7 @@ export class TheHive implements INodeType {
 						const version = credentials.apiVersion;
 
 						const filters = this.getNodeParameter('filters', i, {}) as INodeParameters;
-						const queryAttributs: any = prepareOptional(filters);
+						const queryAttributs = prepareOptional(filters);
 
 						const _searchQuery: IQueryObject = And();
 
@@ -1367,7 +1312,7 @@ export class TheHive implements INodeType {
 
 						let endpoint;
 
-						let method;
+						let method: IHttpRequestMethods;
 
 						let body: IDataObject = {};
 
@@ -1438,7 +1383,7 @@ export class TheHive implements INodeType {
 
 				if (resource === 'task') {
 					if (operation === 'count') {
-						const countQueryAttributs: any = prepareOptional(
+						const countQueryAttributs = prepareOptional(
 							this.getNodeParameter('filters', i, {}) as INodeParameters,
 						);
 
@@ -1550,7 +1495,7 @@ export class TheHive implements INodeType {
 
 						let endpoint;
 
-						let method;
+						let method: IHttpRequestMethods;
 
 						let body: IDataObject = {};
 
@@ -1592,7 +1537,7 @@ export class TheHive implements INodeType {
 
 						let endpoint;
 
-						let method;
+						let method: IHttpRequestMethods;
 
 						let body: IDataObject = {};
 
@@ -1652,7 +1597,7 @@ export class TheHive implements INodeType {
 
 						const version = credentials.apiVersion;
 
-						const queryAttributs: any = prepareOptional(
+						const queryAttributs = prepareOptional(
 							this.getNodeParameter('filters', i, {}) as INodeParameters,
 						);
 
@@ -1674,7 +1619,7 @@ export class TheHive implements INodeType {
 
 						let endpoint;
 
-						let method;
+						let method: IHttpRequestMethods;
 
 						let body: IDataObject = {};
 
@@ -1756,25 +1701,8 @@ export class TheHive implements INodeType {
 								.attachmentValues as IDataObject;
 
 							if (attachmentValues) {
-								const item = items[i];
-
-								if (item.binary === undefined) {
-									throw new NodeOperationError(this.getNode(), 'No binary data exists on item!', {
-										itemIndex: i,
-									});
-								}
-
 								const binaryPropertyName = attachmentValues.binaryProperty as string;
-
-								if (item.binary[binaryPropertyName] === undefined) {
-									throw new NodeOperationError(
-										this.getNode(),
-										`No binary data property '${binaryPropertyName}' does not exists on item!`,
-										{ itemIndex: i },
-									);
-								}
-
-								const binaryData = item.binary[binaryPropertyName];
+								const binaryData = this.helpers.assertBinaryData(i, binaryPropertyName);
 								const dataBuffer = await this.helpers.getBinaryDataBuffer(i, binaryPropertyName);
 
 								options = {
@@ -1863,7 +1791,7 @@ export class TheHive implements INodeType {
 
 						let endpoint;
 
-						let method;
+						let method: IHttpRequestMethods;
 
 						let body: IDataObject = {};
 
@@ -1904,7 +1832,7 @@ export class TheHive implements INodeType {
 
 						let endpoint;
 
-						let method;
+						let method: IHttpRequestMethods;
 
 						let body: IDataObject = {};
 
@@ -1953,19 +1881,23 @@ export class TheHive implements INodeType {
 					}
 				}
 
-				if (Array.isArray(responseData)) {
-					returnData.push.apply(returnData, responseData as IDataObject[]);
-				} else if (responseData !== undefined) {
-					returnData.push(responseData as IDataObject);
-				}
+				const executionData = this.helpers.constructExecutionMetaData(
+					this.helpers.returnJsonArray(responseData as IDataObject[]),
+					{ itemData: { item: i } },
+				);
+				returnData.push(...executionData);
 			} catch (error) {
 				if (this.continueOnFail()) {
-					returnData.push({ error: error.message });
+					const executionData = this.helpers.constructExecutionMetaData(
+						this.helpers.returnJsonArray({ error: error.message }),
+						{ itemData: { item: i } },
+					);
+					returnData.push(...executionData);
 					continue;
 				}
 				throw error;
 			}
 		}
-		return [this.helpers.returnJsonArray(returnData)];
+		return [returnData];
 	}
 }

@@ -1,4 +1,4 @@
-import {
+import type {
 	IAuthenticateGeneric,
 	ICredentialDataDecryptedObject,
 	ICredentialType,
@@ -53,6 +53,7 @@ export class VenafiTlsProtectDatacenterApi implements ICredentialType {
 			displayName: 'Access Token',
 			name: 'token',
 			type: 'hidden',
+
 			typeOptions: {
 				expirable: true,
 			},

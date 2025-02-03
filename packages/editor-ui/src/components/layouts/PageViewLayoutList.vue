@@ -1,7 +1,15 @@
+<script lang="ts" setup>
+interface Props {
+	overflow?: boolean;
+}
+
+defineProps<Props>();
+</script>
+
 <template>
-	<div :class="$style.wrapper">
+	<div :class="{ [$style.wrapper]: true, [$style.overflow]: overflow }">
 		<div :class="$style.list">
-			<div v-if="$slots.header">
+			<div v-if="$slots.header" :class="$style.header">
 				<slot name="header" />
 			</div>
 			<div :class="$style.body">
@@ -13,20 +21,25 @@
 
 <style lang="scss" module>
 .wrapper {
-	display: block;
-	width: 100%;
+	display: grid;
 	height: 100%;
+}
+
+.overflow {
+	.list {
+		.body {
+			overflow: auto;
+		}
+	}
 }
 
 .list {
-	display: flex;
-	flex-direction: column;
-	align-items: stretch;
-	width: 100%;
+	display: grid;
+	grid-template-rows: auto 1fr;
 	height: 100%;
-}
-
-.body {
-	overflow: auto;
+	.body {
+		position: relative;
+		height: 100%;
+	}
 }
 </style>

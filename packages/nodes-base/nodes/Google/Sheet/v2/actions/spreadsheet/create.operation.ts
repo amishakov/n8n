@@ -1,6 +1,7 @@
-import { IExecuteFunctions } from 'n8n-core';
-import { IDataObject, INodeExecutionData } from 'n8n-workflow';
-import { SpreadSheetProperties } from '../../helpers/GoogleSheets.types';
+import type { IExecuteFunctions, IDataObject, INodeExecutionData } from 'n8n-workflow';
+
+import { wrapData } from '../../../../../../utils/utilities';
+import type { SpreadSheetProperties } from '../../helpers/GoogleSheets.types';
 import { apiRequest } from '../../transport';
 
 export const description: SpreadSheetProperties = [
@@ -59,7 +60,7 @@ export const description: SpreadSheetProperties = [
 		displayName: 'Options',
 		name: 'options',
 		type: 'collection',
-		placeholder: 'Add Option',
+		placeholder: 'Add option',
 		default: {},
 		displayOptions: {
 			show: {
@@ -116,7 +117,7 @@ export const description: SpreadSheetProperties = [
 
 export async function execute(this: IExecuteFunctions): Promise<INodeExecutionData[]> {
 	const items = this.getInputData();
-	const returnData: IDataObject[] = [];
+	const returnData: INodeExecutionData[] = [];
 
 	for (let i = 0; i < items.length; i++) {
 		const title = this.getNodeParameter('title', i) as string;
@@ -146,8 +147,14 @@ export async function execute(this: IExecuteFunctions): Promise<INodeExecutionDa
 		body.properties.locale = options.locale ? (options.locale as string) : undefined;
 
 		const response = await apiRequest.call(this, 'POST', '/v4/spreadsheets', body);
-		returnData.push(response);
+
+		const executionData = this.helpers.constructExecutionMetaData(
+			wrapData(response as IDataObject),
+			{ itemData: { item: i } },
+		);
+
+		returnData.push(...executionData);
 	}
 
-	return this.helpers.returnJsonArray(returnData);
+	return returnData;
 }

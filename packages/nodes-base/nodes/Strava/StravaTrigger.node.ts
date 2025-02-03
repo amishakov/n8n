@@ -1,10 +1,15 @@
-import { IHookFunctions, IWebhookFunctions } from 'n8n-core';
-
-import { IDataObject, INodeType, INodeTypeDescription, IWebhookResponseData } from 'n8n-workflow';
+import { randomBytes } from 'crypto';
+import type {
+	IHookFunctions,
+	IWebhookFunctions,
+	IDataObject,
+	INodeType,
+	INodeTypeDescription,
+	IWebhookResponseData,
+} from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
 
 import { stravaApiRequest } from './GenericFunctions';
-
-import { randomBytes } from 'crypto';
 
 export class StravaTrigger implements INodeType {
 	description: INodeTypeDescription = {
@@ -18,7 +23,7 @@ export class StravaTrigger implements INodeType {
 			name: 'Strava Trigger',
 		},
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'stravaOAuth2Api',
@@ -97,7 +102,7 @@ export class StravaTrigger implements INodeType {
 				displayName: 'Options',
 				name: 'options',
 				type: 'collection',
-				placeholder: 'Add Option',
+				placeholder: 'Add option',
 				default: {},
 				options: [
 					{
@@ -107,14 +112,13 @@ export class StravaTrigger implements INodeType {
 						default: false,
 						// eslint-disable-next-line n8n-nodes-base/node-param-description-boolean-without-whether
 						description:
-							'Strava allows just one subscription at all times. If you want to delete the current subscription to make room for a new subcription with the current parameters, set this parameter to true. Keep in mind this is a destructive operation.',
+							'Strava allows just one subscription at all times. If you want to delete the current subscription to make room for a new subscription with the current parameters, set this parameter to true. Keep in mind this is a destructive operation.',
 					},
 				],
 			},
 		],
 	};
 
-	// @ts-ignore (because of request)
 	webhookMethods = {
 		default: {
 			async checkExists(this: IHookFunctions): Promise<boolean> {
@@ -151,9 +155,8 @@ export class StravaTrigger implements INodeType {
 				try {
 					responseData = await stravaApiRequest.call(this, 'POST', endpoint, body);
 				} catch (error) {
-					const apiErrorResponse = error.cause.response;
-					if (apiErrorResponse?.body?.errors) {
-						const errors = apiErrorResponse.body.errors;
+					if (error?.cause?.error) {
+						const errors = error?.cause?.error?.errors;
 						for (error of errors) {
 							// if there is a subscription already created
 							if (error.resource === 'PushSubscription' && error.code === 'already exists') {
@@ -173,6 +176,7 @@ export class StravaTrigger implements INodeType {
 										'DELETE',
 										`/push_subscriptions/${webhooks[0].id}`,
 									);
+
 									// now there is room create a subscription with the n8n data
 									const requestBody = {
 										callback_url: webhookUrl,
@@ -186,7 +190,7 @@ export class StravaTrigger implements INodeType {
 										requestBody,
 									);
 								} else {
-									error.message = `A subscription already exists [${webhooks[0].callback_url}]. If you want to delete this subcription and create a new one with the current parameters please go to options and set delete if exist to true`;
+									error.message = `A subscription already exists [${webhooks[0].callback_url}]. If you want to delete this subscription and create a new one with the current parameters please go to options and set delete if exist to true`;
 									throw error;
 								}
 							}
@@ -218,7 +222,7 @@ export class StravaTrigger implements INodeType {
 					}
 
 					// Remove from the static workflow data so that it is clear
-					// that no webhooks are registred anymore
+					// that no webhooks are registered anymore
 					delete webhookData.webhookId;
 				}
 				return true;
@@ -266,7 +270,7 @@ export class StravaTrigger implements INodeType {
 			return {};
 		}
 
-		if (resolveData) {
+		if (resolveData && body.aspect_type !== 'delete') {
 			let endpoint = `/athletes/${body.object_id}/stats`;
 			if (body.object_type === 'activity') {
 				endpoint = `/activities/${body.object_id}`;

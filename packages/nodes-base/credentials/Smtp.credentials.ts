@@ -1,4 +1,4 @@
-import { ICredentialType, INodeProperties } from 'n8n-workflow';
+import type { ICredentialType, INodeProperties } from 'n8n-workflow';
 
 export class Smtp implements ICredentialType {
 	name = 'smtp';
@@ -40,6 +40,25 @@ export class Smtp implements ICredentialType {
 			name: 'secure',
 			type: 'boolean',
 			default: true,
+		},
+		{
+			displayName: 'Disable STARTTLS',
+			name: 'disableStartTls',
+			type: 'boolean',
+			default: false,
+			displayOptions: {
+				show: {
+					secure: [false],
+				},
+			},
+		},
+		{
+			displayName: 'Client Host Name',
+			name: 'hostName',
+			type: 'string',
+			default: '',
+			placeholder: '',
+			description: 'The hostname of the client, used for identifying to the server',
 		},
 	];
 }

@@ -1,6 +1,11 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import { IDataObject, INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
+import type {
+	IExecuteFunctions,
+	IDataObject,
+	INodeExecutionData,
+	INodeType,
+	INodeTypeDescription,
+} from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
 
 import { oneSimpleApiRequest } from './GenericFunctions';
 
@@ -15,8 +20,8 @@ export class OneSimpleApi implements INodeType {
 		defaults: {
 			name: 'One Simple API',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'oneSimpleApi',
@@ -218,7 +223,7 @@ export class OneSimpleApi implements INodeType {
 				displayName: 'Options',
 				name: 'options',
 				type: 'collection',
-				placeholder: 'Add Option',
+				placeholder: 'Add option',
 				default: {},
 				displayOptions: {
 					show: {
@@ -338,7 +343,7 @@ export class OneSimpleApi implements INodeType {
 				displayName: 'Options',
 				name: 'options',
 				type: 'collection',
-				placeholder: 'Add Option',
+				placeholder: 'Add option',
 				default: {},
 				displayOptions: {
 					show: {
@@ -435,7 +440,7 @@ export class OneSimpleApi implements INodeType {
 				displayName: 'Options',
 				name: 'options',
 				type: 'collection',
-				placeholder: 'Add Option',
+				placeholder: 'Add option',
 				default: {},
 				displayOptions: {
 					show: {
@@ -599,7 +604,7 @@ export class OneSimpleApi implements INodeType {
 				displayName: 'Options',
 				name: 'options',
 				type: 'collection',
-				placeholder: 'Add Option',
+				placeholder: 'Add option',
 				default: {},
 				displayOptions: {
 					show: {
@@ -687,7 +692,7 @@ export class OneSimpleApi implements INodeType {
 								'',
 								{},
 								{},
-								response.url,
+								response.url as string,
 								{ json: false, encoding: null },
 							)) as Buffer;
 							responseData = {
@@ -734,7 +739,7 @@ export class OneSimpleApi implements INodeType {
 								'',
 								{},
 								{},
-								response.url,
+								response.url as string,
 								{ json: false, encoding: null },
 							)) as Buffer;
 							responseData = {
@@ -839,7 +844,7 @@ export class OneSimpleApi implements INodeType {
 								'',
 								{},
 								{},
-								response.url,
+								response.url as string,
 								{ json: false, encoding: null },
 							)) as Buffer;
 							responseData = {
@@ -869,7 +874,7 @@ export class OneSimpleApi implements INodeType {
 		}
 
 		if (download) {
-			return this.prepareOutputData(returnData as unknown as INodeExecutionData[]);
+			return [returnData as unknown as INodeExecutionData[]];
 		}
 
 		return [this.helpers.returnJsonArray(returnData)];

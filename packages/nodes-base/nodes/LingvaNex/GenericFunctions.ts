@@ -1,17 +1,17 @@
-import { OptionsWithUri } from 'request';
-
-import {
+import type {
+	IDataObject,
 	IExecuteFunctions,
-	IExecuteSingleFunctions,
 	IHookFunctions,
 	ILoadOptionsFunctions,
-} from 'n8n-core';
-
-import { IDataObject, NodeApiError } from 'n8n-workflow';
+	JsonObject,
+	IRequestOptions,
+	IHttpRequestMethods,
+} from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
 
 export async function lingvaNexApiRequest(
-	this: IHookFunctions | IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions,
-	method: string,
+	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
+	method: IHttpRequestMethods,
 	resource: string,
 
 	body: any = {},
@@ -21,14 +21,14 @@ export async function lingvaNexApiRequest(
 ): Promise<any> {
 	try {
 		const credentials = await this.getCredentials('lingvaNexApi');
-		let options: OptionsWithUri = {
+		let options: IRequestOptions = {
 			headers: {
 				Authorization: `Bearer ${credentials.apiKey}`,
 			},
 			method,
 			qs,
 			body,
-			uri: uri ?? `https://api-b2b.backenster.com/b1/api/v3${resource}`,
+			uri: uri || `https://api-b2b.backenster.com/b1/api/v3${resource}`,
 			json: true,
 		};
 
@@ -37,11 +37,11 @@ export async function lingvaNexApiRequest(
 		const response = await this.helpers.request(options);
 
 		if (response.err !== null) {
-			throw new NodeApiError(this.getNode(), response);
+			throw new NodeApiError(this.getNode(), response as JsonObject);
 		}
 
 		return response;
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }

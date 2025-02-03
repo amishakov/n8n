@@ -1,4 +1,4 @@
-import { IDataObject } from 'n8n-workflow';
+import type { IDataObject } from 'n8n-workflow';
 
 export interface IReminder {
 	useDefault?: boolean;
@@ -34,3 +34,8 @@ export interface IEvent {
 	visibility?: string;
 	conferenceData?: IConferenceData;
 }
+
+export type RecurringEventInstance = {
+	recurringEventId?: string;
+	start: { dateTime: string; date: string };
+};

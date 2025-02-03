@@ -1,6 +1,5 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import type {
+	IExecuteFunctions,
 	ICredentialsDecrypted,
 	ICredentialTestFunctions,
 	IDataObject,
@@ -9,10 +8,9 @@ import {
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
-	NodeOperationError,
+	IRequestOptions,
 } from 'n8n-workflow';
-
-import { OptionsWithUri } from 'request';
+import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
 import {
 	groupDescription,
@@ -20,7 +18,6 @@ import {
 	ticketDescription,
 	userDescription,
 } from './descriptions';
-
 import {
 	doesNotBelongToZammad,
 	fieldToLoadOption,
@@ -40,7 +37,6 @@ import {
 	zammadApiRequest,
 	zammadApiRequestAllItems,
 } from './GenericFunctions';
-
 import type { Zammad as ZammadTypes } from './types';
 
 export class Zammad implements INodeType {
@@ -55,8 +51,8 @@ export class Zammad implements INodeType {
 		defaults: {
 			name: 'Zammad',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'zammadBasicAuthApi',
@@ -257,7 +253,7 @@ export class Zammad implements INodeType {
 
 				const baseUrl = tolerateTrailingSlash(credentials.baseUrl);
 
-				const options: OptionsWithUri = {
+				const options: IRequestOptions = {
 					method: 'GET',
 					uri: `${baseUrl}/api/v1/users/me`,
 					json: true,
@@ -290,7 +286,7 @@ export class Zammad implements INodeType {
 
 				const baseUrl = tolerateTrailingSlash(credentials.baseUrl);
 
-				const options: OptionsWithUri = {
+				const options: IRequestOptions = {
 					method: 'GET',
 					uri: `${baseUrl}/api/v1/users/me`,
 					json: true,
@@ -746,7 +742,7 @@ export class Zammad implements INodeType {
 				}
 
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as IDataObject),
 					{ itemData: { item: i } },
 				);
 				returnData.push(...executionData);
@@ -758,6 +754,6 @@ export class Zammad implements INodeType {
 				throw error;
 			}
 		}
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

@@ -1,12 +1,10 @@
-import { IDataObject, jsonParse } from 'n8n-workflow';
-import {
-	Context,
-	FormatDueDatetime,
-	todoistApiRequest,
-	todoistSyncRequest,
-} from '../GenericFunctions';
-import type { Section, TodoistResponse } from './Service';
+import type { IDataObject } from 'n8n-workflow';
+import { ApplicationError, jsonParse } from 'n8n-workflow';
 import { v4 as uuid } from 'uuid';
+
+import type { Section, TodoistResponse } from './Service';
+import type { Context } from '../GenericFunctions';
+import { FormatDueDatetime, todoistApiRequest, todoistSyncRequest } from '../GenericFunctions';
 
 export interface OperationHandler {
 	handleOperation(ctx: Context, itemIndex: number): Promise<TodoistResponse>;
@@ -45,7 +43,7 @@ export interface Command {
 	};
 }
 
-export enum CommandType {
+export const enum CommandType {
 	ITEM_MOVE = 'item_move',
 	ITEM_ADD = 'item_add',
 	ITEM_UPDATE = 'item_update',
@@ -107,7 +105,7 @@ export class CreateHandler implements OperationHandler {
 			body.parent_id = options.parentId as string;
 		}
 
-		const data = await todoistApiRequest.call(ctx, 'POST', '/tasks', body);
+		const data = await todoistApiRequest.call(ctx, 'POST', '/tasks', body as IDataObject);
 
 		return {
 			data,
@@ -250,7 +248,7 @@ export class UpdateHandler implements OperationHandler {
 			body.due_lang = updateFields.dueLang as string;
 		}
 
-		await todoistApiRequest.call(ctx, 'POST', `/tasks/${id}`, body);
+		await todoistApiRequest.call(ctx, 'POST', `/tasks/${id}`, body as IDataObject);
 
 		return { success: true };
 	}
@@ -326,7 +324,10 @@ export class SyncHandler implements OperationHandler {
 			if (sectionId) {
 				command.args.section_id = sectionId;
 			} else {
-				throw new Error('Section ' + command.args.section + " doesn't exist on Todoist");
+				throw new ApplicationError(
+					'Section ' + command.args.section + " doesn't exist on Todoist",
+					{ level: 'warning' },
+				);
 			}
 		}
 	}

@@ -1,12 +1,13 @@
 import cheerio from 'cheerio';
-import { IExecuteFunctions } from 'n8n-core';
-import {
+import get from 'lodash/get';
+import type {
 	IDataObject,
+	IExecuteFunctions,
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
-	NodeOperationError,
 } from 'n8n-workflow';
+import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
 
 type Cheerio = ReturnType<typeof cheerio>;
 
@@ -24,7 +25,7 @@ const extractFunctions: {
 } = {
 	attribute: ($: Cheerio, valueData: IValueData): string | undefined =>
 		$.attr(valueData.attribute!),
-	html: ($: Cheerio, _valueData: IValueData): string | undefined => $.html() ?? undefined,
+	html: ($: Cheerio, _valueData: IValueData): string | undefined => $.html() || undefined,
 	text: ($: Cheerio, _valueData: IValueData): string | undefined => $.text(),
 	value: ($: Cheerio, _valueData: IValueData): string | undefined => $.val(),
 };
@@ -48,14 +49,15 @@ export class HtmlExtract implements INodeType {
 		icon: 'fa:cut',
 		group: ['transform'],
 		version: 1,
+		hidden: true,
 		subtitle: '={{$parameter["sourceData"] + ": " + $parameter["dataPropertyName"]}}',
 		description: 'Extracts data from HTML',
 		defaults: {
 			name: 'HTML Extract',
 			color: '#333377',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		properties: [
 			{
 				displayName: 'Source Data',
@@ -75,7 +77,7 @@ export class HtmlExtract implements INodeType {
 				description: 'If HTML should be read from binary or JSON data',
 			},
 			{
-				displayName: 'Binary Property',
+				displayName: 'Input Binary Field',
 				name: 'dataPropertyName',
 				type: 'string',
 				displayOptions: {
@@ -85,8 +87,7 @@ export class HtmlExtract implements INodeType {
 				},
 				default: 'data',
 				required: true,
-				description:
-					'Name of the binary property in which the HTML to extract the data from can be found',
+				hint: 'The name of the input binary field containing the file to be extracted',
 			},
 			{
 				displayName: 'JSON Property',
@@ -190,7 +191,7 @@ export class HtmlExtract implements INodeType {
 				displayName: 'Options',
 				name: 'options',
 				type: 'collection',
-				placeholder: 'Add Option',
+				placeholder: 'Add option',
 				default: {},
 				options: [
 					{
@@ -226,28 +227,17 @@ export class HtmlExtract implements INodeType {
 
 				let htmlArray: string[] | string = [];
 				if (sourceData === 'json') {
-					if (item.json[dataPropertyName] === undefined) {
+					const data = get(item.json, dataPropertyName, undefined);
+					if (data === undefined) {
 						throw new NodeOperationError(
 							this.getNode(),
 							`No property named "${dataPropertyName}" exists!`,
 							{ itemIndex },
 						);
 					}
-					htmlArray = item.json[dataPropertyName] as string;
+					htmlArray = data as string;
 				} else {
-					if (item.binary === undefined) {
-						throw new NodeOperationError(this.getNode(), 'No item does not contain binary data!', {
-							itemIndex,
-						});
-					}
-					if (item.binary[dataPropertyName] === undefined) {
-						throw new NodeOperationError(
-							this.getNode(),
-							`No property named "${dataPropertyName}" exists!`,
-							{ itemIndex },
-						);
-					}
-
+					this.helpers.assertBinaryData(itemIndex, dataPropertyName);
 					const binaryDataBuffer = await this.helpers.getBinaryDataBuffer(
 						itemIndex,
 						dataPropertyName,
@@ -270,16 +260,16 @@ export class HtmlExtract implements INodeType {
 						},
 					};
 
-					// Itterate over all the defined values which should be extracted
+					// Iterate over all the defined values which should be extracted
 					let htmlElement;
 					for (const valueData of extractionValues.values as IValueData[]) {
 						htmlElement = $(valueData.cssSelector);
 
 						if (valueData.returnArray) {
-							// An array should be returned so itterate over one
+							// An array should be returned so iterate over one
 							// value at a time
 							newItem.json[valueData.key] = [];
-							htmlElement.each((i, el) => {
+							htmlElement.each((_, el) => {
 								(newItem.json[valueData.key] as Array<string | undefined>).push(
 									getValue($(el), valueData, options),
 								);
@@ -307,6 +297,6 @@ export class HtmlExtract implements INodeType {
 			}
 		}
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

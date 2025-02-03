@@ -1,11 +1,17 @@
-import { IExecuteFunctions } from 'n8n-core';
-import { INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
+import type {
+	IExecuteFunctions,
+	INodeExecutionData,
+	INodeType,
+	INodeTypeDescription,
+} from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
 
 export class ErrorTrigger implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Error Trigger',
 		name: 'errorTrigger',
 		icon: 'fa:bug',
+		iconColor: 'blue',
 		group: ['trigger'],
 		version: 1,
 		description: 'Triggers the workflow when another workflow has an error',
@@ -17,7 +23,7 @@ export class ErrorTrigger implements INodeType {
 			color: '#0000FF',
 		},
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		properties: [
 			{
 				displayName:
@@ -54,7 +60,7 @@ export class ErrorTrigger implements INodeType {
 			items[0].json = {
 				execution: {
 					id,
-					url: `${urlParts.join('/')}/${id}`,
+					url: `${urlParts.join('/')}/workflow/1/${id}`,
 					retryOf: '34',
 					error: {
 						message: 'Example Error Message',
@@ -70,6 +76,6 @@ export class ErrorTrigger implements INodeType {
 			};
 		}
 
-		return this.prepareOutputData(items);
+		return [items];
 	}
 }

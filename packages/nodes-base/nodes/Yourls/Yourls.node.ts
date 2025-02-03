@@ -1,9 +1,13 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import { IDataObject, INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
+import {
+	type IExecuteFunctions,
+	type IDataObject,
+	type INodeExecutionData,
+	type INodeType,
+	type INodeTypeDescription,
+	NodeConnectionType,
+} from 'n8n-workflow';
 
 import { yourlsApiRequest } from './GenericFunctions';
-
 import { urlFields, urlOperations } from './UrlDescription';
 
 export class Yourls implements INodeType {
@@ -19,8 +23,8 @@ export class Yourls implements INodeType {
 		defaults: {
 			name: 'Yourls',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'yourlsApi',

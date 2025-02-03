@@ -1,3 +1,19 @@
+<script lang="ts" setup>
+interface RadioButtonProps {
+	label: string;
+	value: string;
+	active?: boolean;
+	disabled?: boolean;
+	size?: 'small' | 'medium';
+}
+
+withDefaults(defineProps<RadioButtonProps>(), {
+	active: false,
+	disabled: false,
+	size: 'medium',
+});
+</script>
+
 <template>
 	<label
 		role="radio"
@@ -5,11 +21,10 @@
 		:class="{
 			'n8n-radio-button': true,
 			[$style.container]: true,
-			[$style.hoverable]: !this.disabled,
+			[$style.hoverable]: !disabled,
 		}"
-		aria-checked="true"
+		:aria-checked="active"
 	>
-		<input type="radio" tabindex="-1" autocomplete="off" :class="$style.input" :value="value" />
 		<div
 			:class="{
 				[$style.button]: true,
@@ -17,42 +32,12 @@
 				[$style[size]]: true,
 				[$style.disabled]: disabled,
 			}"
-			@click="$emit('click')"
+			:data-test-id="`radio-button-${value}`"
 		>
 			{{ label }}
 		</div>
 	</label>
 </template>
-
-<script lang="ts">
-import Vue from 'vue';
-
-export default Vue.extend({
-	name: 'n8n-radio-button',
-	props: {
-		label: {
-			type: String,
-			required: true,
-		},
-		value: {
-			type: String,
-			required: true,
-		},
-		active: {
-			type: Boolean,
-			default: false,
-		},
-		size: {
-			type: String,
-			default: 'medium',
-			validator: (value: string): boolean => ['small', 'medium'].includes(value),
-		},
-		disabled: {
-			type: Boolean,
-		},
-	},
-});
-</script>
 
 <style lang="scss" module>
 .container {
@@ -75,7 +60,6 @@ export default Vue.extend({
 }
 
 .button {
-	border-radius: 0;
 	display: flex;
 	align-items: center;
 	border-radius: var(--border-radius-base);

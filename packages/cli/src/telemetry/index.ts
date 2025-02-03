@@ -1,14 +1,21 @@
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+import { GlobalConfig } from '@n8n/config';
+import { Container, Service } from '@n8n/di';
 import type RudderStack from '@rudderstack/rudder-sdk-node';
-import type { PostHog } from 'posthog-node';
-import { ITelemetryTrackProperties, LoggerProxy } from 'n8n-workflow';
-import config from '@/config';
-import { IExecutionTrackProperties } from '@/Interfaces';
-import { getLogger } from '@/Logger';
-import { getLicense } from '@/License';
-import { LicenseService } from '@/license/License.service';
-import { N8N_VERSION } from '@/constants';
+import axios from 'axios';
+import { InstanceSettings, Logger } from 'n8n-core';
+import type { ITelemetryTrackProperties } from 'n8n-workflow';
+
+import { LOWEST_SHUTDOWN_PRIORITY, N8N_VERSION } from '@/constants';
+import { ProjectRelationRepository } from '@/databases/repositories/project-relation.repository';
+import { ProjectRepository } from '@/databases/repositories/project.repository';
+import { UserRepository } from '@/databases/repositories/user.repository';
+import { WorkflowRepository } from '@/databases/repositories/workflow.repository';
+import { OnShutdown } from '@/decorators/on-shutdown';
+import type { IExecutionTrackProperties } from '@/interfaces';
+import { License } from '@/license';
+import { PostHogClient } from '@/posthog';
+
+import { SourceControlPreferencesService } from '../environments.ee/source-control/source-control-preferences.service.ee';
 
 type ExecutionTrackDataKey = 'manual_error' | 'manual_success' | 'prod_error' | 'prod_success';
 
@@ -27,82 +34,107 @@ interface IExecutionsBuffer {
 	};
 }
 
+@Service()
 export class Telemetry {
 	private rudderStack?: RudderStack;
-
-	private postHog?: PostHog;
 
 	private pulseIntervalReference: NodeJS.Timeout;
 
 	private executionCountsBuffer: IExecutionsBuffer = {};
 
-	constructor(private instanceId: string) {}
+	constructor(
+		private readonly logger: Logger,
+		private readonly postHog: PostHogClient,
+		private readonly license: License,
+		private readonly instanceSettings: InstanceSettings,
+		private readonly workflowRepository: WorkflowRepository,
+		private readonly globalConfig: GlobalConfig,
+	) {}
 
 	async init() {
-		const enabled = config.getEnv('diagnostics.enabled');
+		const { enabled, backendConfig } = this.globalConfig.diagnostics;
 		if (enabled) {
-			const conf = config.getEnv('diagnostics.config.backend');
-			const [key, url] = conf.split(';');
+			const [key, dataPlaneUrl] = backendConfig.split(';');
 
-			if (!key || !url) {
-				const logger = getLogger();
-				LoggerProxy.init(logger);
-				logger.warn('Diagnostics backend config is invalid');
+			if (!key || !dataPlaneUrl) {
+				this.logger.warn('Diagnostics backend config is invalid');
 				return;
 			}
 
-			const logLevel = config.getEnv('logs.level');
+			const logLevel = this.globalConfig.logging.level;
 
-			// eslint-disable-next-line @typescript-eslint/naming-convention
 			const { default: RudderStack } = await import('@rudderstack/rudder-sdk-node');
-			this.rudderStack = new RudderStack(key, url, { logLevel });
-
-			// eslint-disable-next-line @typescript-eslint/naming-convention
-			const { PostHog } = await import('posthog-node');
-			this.postHog = new PostHog(config.getEnv('diagnostics.config.posthog.apiKey'));
+			const axiosInstance = axios.create();
+			axiosInstance.interceptors.request.use((cfg) => {
+				cfg.headers.setContentType('application/json', false);
+				return cfg;
+			});
+			this.rudderStack = new RudderStack(key, {
+				axiosInstance,
+				logLevel,
+				dataPlaneUrl,
+				gzip: false,
+			});
 
 			this.startPulse();
 		}
 	}
 
 	private startPulse() {
-		this.pulseIntervalReference = setInterval(async () => {
-			void this.pulse();
-		}, 6 * 60 * 60 * 1000); // every 6 hours
+		this.pulseIntervalReference = setInterval(
+			async () => {
+				void this.pulse();
+			},
+			6 * 60 * 60 * 1000,
+		); // every 6 hours
 	}
 
-	private async pulse(): Promise<unknown> {
+	private async pulse() {
 		if (!this.rudderStack) {
-			return Promise.resolve();
+			return;
 		}
 
-		const allPromises = Object.keys(this.executionCountsBuffer).map(async (workflowId) => {
-			const promise = this.track(
-				'Workflow execution count',
-				{
-					event_version: '2',
-					workflow_id: workflowId,
-					...this.executionCountsBuffer[workflowId],
-				},
-				{ withPostHog: true },
-			);
-
-			return promise;
+		const workflowIdsToReport = Object.keys(this.executionCountsBuffer).filter((workflowId) => {
+			const data = this.executionCountsBuffer[workflowId];
+			const sum =
+				(data.manual_error?.count ?? 0) +
+				(data.manual_success?.count ?? 0) +
+				(data.prod_error?.count ?? 0) +
+				(data.prod_success?.count ?? 0);
+			return sum > 0;
 		});
+
+		for (const workflowId of workflowIdsToReport) {
+			this.track('Workflow execution count', {
+				event_version: '2',
+				workflow_id: workflowId,
+				...this.executionCountsBuffer[workflowId],
+			});
+		}
 
 		this.executionCountsBuffer = {};
 
+		const sourceControlPreferences = Container.get(
+			SourceControlPreferencesService,
+		).getPreferences();
+
 		// License info
 		const pulsePacket = {
-			plan_name_current: getLicense().getPlanName(),
-			quota: getLicense().getTriggerLimit(),
-			usage: await LicenseService.getActiveTriggerCount(),
+			plan_name_current: this.license.getPlanName(),
+			quota: this.license.getTriggerLimit(),
+			usage: await this.workflowRepository.getActiveTriggerCount(),
+			role_count: await Container.get(UserRepository).countUsersByRole(),
+			source_control_set_up: Container.get(SourceControlPreferencesService).isSourceControlSetup(),
+			branchName: sourceControlPreferences.branchName,
+			read_only_instance: sourceControlPreferences.branchReadOnly,
+			team_projects: (await Container.get(ProjectRepository).getProjectCounts()).team,
+			project_role_count: await Container.get(ProjectRelationRepository).countUsersByRole(),
 		};
-		allPromises.push(this.track('pulse', pulsePacket));
-		return Promise.all(allPromises);
+
+		this.track('pulse', pulsePacket);
 	}
 
-	async trackWorkflowExecution(properties: IExecutionTrackProperties): Promise<void> {
+	trackWorkflowExecution(properties: IExecutionTrackProperties) {
 		if (this.rudderStack) {
 			const execTime = new Date();
 			const workflowId = properties.workflow_id;
@@ -115,107 +147,87 @@ export class Telemetry {
 				properties.success ? 'success' : 'error'
 			}`;
 
-			if (!this.executionCountsBuffer[workflowId][key]) {
+			const executionTrackDataKey = this.executionCountsBuffer[workflowId][key];
+
+			if (!executionTrackDataKey) {
 				this.executionCountsBuffer[workflowId][key] = {
 					count: 1,
 					first: execTime,
 				};
 			} else {
-				// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-				this.executionCountsBuffer[workflowId][key]!.count++;
+				executionTrackDataKey.count++;
 			}
 
-			if (!properties.success && properties.error_node_type?.startsWith('n8n-nodes-base')) {
-				void this.track('Workflow execution errored', properties);
+			if (
+				!properties.success &&
+				properties.is_manual &&
+				properties.error_node_type?.startsWith('n8n-nodes-base')
+			) {
+				this.track('Workflow execution errored', properties);
 			}
 		}
 	}
 
-	async trackN8nStop(): Promise<void> {
+	@OnShutdown(LOWEST_SHUTDOWN_PRIORITY)
+	async stopTracking(): Promise<void> {
 		clearInterval(this.pulseIntervalReference);
-		void this.track('User instance stopped');
-		return new Promise<void>((resolve) => {
-			if (this.postHog) {
-				this.postHog.shutdown();
-			}
 
-			if (this.rudderStack) {
-				this.rudderStack.flush(resolve);
-			} else {
-				resolve();
-			}
+		await Promise.all([this.postHog.stop(), this.rudderStack?.flush()]);
+	}
+
+	identify(traits?: { [key: string]: string | number | boolean | object | undefined | null }) {
+		if (!this.rudderStack) {
+			return;
+		}
+
+		const { instanceId } = this.instanceSettings;
+
+		this.rudderStack.identify({
+			userId: instanceId,
+			traits: { ...traits, instanceId },
+			context: {
+				// provide a fake IP address to instruct RudderStack to not use the user's IP address
+				ip: '0.0.0.0',
+			},
 		});
 	}
 
-	async identify(traits?: {
-		[key: string]: string | number | boolean | object | undefined | null;
-	}): Promise<void> {
-		return new Promise<void>((resolve) => {
-			if (this.rudderStack) {
-				this.rudderStack.identify(
-					{
-						userId: this.instanceId,
-						traits: {
-							...traits,
-							instanceId: this.instanceId,
-						},
-					},
-					resolve,
-				);
-			} else {
-				resolve();
-			}
-		});
-	}
-
-	async track(
+	track(
 		eventName: string,
 		properties: ITelemetryTrackProperties = {},
 		{ withPostHog } = { withPostHog: false }, // whether to additionally track with PostHog
-	): Promise<void> {
-		return new Promise<void>((resolve) => {
-			if (this.rudderStack) {
-				const { user_id } = properties;
-				const updatedProperties: ITelemetryTrackProperties = {
-					...properties,
-					instance_id: this.instanceId,
-					version_cli: N8N_VERSION,
-				};
+	) {
+		if (!this.rudderStack) {
+			return;
+		}
 
-				const payload = {
-					userId: `${this.instanceId}${user_id ? `#${user_id}` : ''}`,
-					event: eventName,
-					properties: updatedProperties,
-				};
+		const { instanceId } = this.instanceSettings;
+		const { user_id } = properties;
+		const updatedProperties = {
+			...properties,
+			instance_id: instanceId,
+			version_cli: N8N_VERSION,
+		};
 
-				if (withPostHog) {
-					this.postHog?.capture({
-						distinctId: payload.userId,
-						sendFeatureFlags: true,
-						...payload,
-					});
-				}
+		const payload = {
+			userId: `${instanceId}${user_id ? `#${user_id}` : ''}`,
+			event: eventName,
+			properties: updatedProperties,
+			context: {},
+		};
 
-				return this.rudderStack.track(payload, resolve);
-			}
+		if (withPostHog) {
+			this.postHog?.track(payload);
+		}
 
-			return resolve();
+		return this.rudderStack.track({
+			...payload,
+			// provide a fake IP address to instruct RudderStack to not use the user's IP address
+			context: { ...payload.context, ip: '0.0.0.0' },
 		});
 	}
 
-	async isFeatureFlagEnabled(
-		featureFlagName: string,
-		{ user_id: userId }: ITelemetryTrackProperties = {},
-	): Promise<boolean | undefined> {
-		if (!this.postHog) return Promise.resolve(false);
-
-		const fullId = [this.instanceId, userId].join('#');
-
-		return this.postHog.isFeatureEnabled(featureFlagName, fullId);
-	}
-
 	// test helpers
-
 	getCountsBuffer(): IExecutionsBuffer {
 		return this.executionCountsBuffer;
 	}

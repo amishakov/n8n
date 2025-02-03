@@ -1,20 +1,20 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
-	NodeOperationError,
 } from 'n8n-workflow';
+import { NodeConnectionType, NodeOperationError } from 'n8n-workflow';
+import qs from 'node:querystring';
 
 import { awsApiRequestSOAP, awsApiRequestSOAPAllItems } from './GenericFunctions';
 
 function setParameter(params: string[], base: string, values: string[]) {
 	for (let i = 0; i < values.length; i++) {
-		params.push(`${base}.${i + 1}=${values[i]}`);
+		params.push(`${base}.${i + 1}=${encodeURIComponent(values[i])}`);
 	}
 }
 
@@ -30,8 +30,8 @@ export class AwsSes implements INodeType {
 		defaults: {
 			name: 'AWS SES',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'aws',
@@ -459,7 +459,7 @@ export class AwsSes implements INodeType {
 				},
 				default: '',
 				description:
-					'The ARN of the template to use when sending this email. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>.',
+					'The ARN of the template to use when sending this email. Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>.',
 			},
 			{
 				displayName: 'From Email',
@@ -787,7 +787,7 @@ export class AwsSes implements INodeType {
 
 	methods = {
 		loadOptions: {
-			// Get all the available templates to display them to user so that he can
+			// Get all the available templates to display them to user so that they can
 			// select them easily
 			async getTemplates(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -817,7 +817,7 @@ export class AwsSes implements INodeType {
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
-		const returnData: IDataObject[] = [];
+		const returnData: INodeExecutionData[] = [];
 		let responseData;
 		const resource = this.getNodeParameter('resource', 0);
 		const operation = this.getNodeParameter('operation', 0);
@@ -844,22 +844,20 @@ export class AwsSes implements INodeType {
 
 						const templateSubject = this.getNodeParameter('templateSubject', i) as string;
 
-						const params = [
-							'Action=CreateCustomVerificationEmailTemplate',
-							`FailureRedirectionURL=${failureRedirectionURL}`,
-							`FromEmailAddress=${email}`,
-							`SuccessRedirectionURL=${successRedirectionURL}`,
-							`TemplateContent=${templateContent}`,
-							`TemplateName=${templateName}`,
-							`TemplateSubject=${templateSubject}`,
-						];
-
 						responseData = await awsApiRequestSOAP.call(
 							this,
 							'email',
 							'POST',
 							'',
-							params.join('&'),
+							qs.stringify({
+								Action: 'CreateCustomVerificationEmailTemplate',
+								FromEmailAddress: email,
+								SuccessRedirectionURL: successRedirectionURL,
+								FailureRedirectionURL: failureRedirectionURL,
+								TemplateName: templateName,
+								TemplateSubject: templateSubject,
+								TemplateContent: templateContent,
+							}),
 						);
 
 						responseData = responseData.CreateCustomVerificationEmailTemplateResponse;
@@ -1013,7 +1011,7 @@ export class AwsSes implements INodeType {
 
 						const params = [
 							`Message.Subject.Data=${encodeURIComponent(subject)}`,
-							`Source=${fromEmail}`,
+							`Source=${encodeURIComponent(fromEmail)}`,
 						];
 
 						if (isBodyHtml) {
@@ -1281,23 +1279,24 @@ export class AwsSes implements INodeType {
 						responseData = responseData.UpdateTemplateResponse;
 					}
 				}
-
-				if (Array.isArray(responseData)) {
-					returnData.push.apply(returnData, responseData as IDataObject[]);
-				} else {
-					if (responseData !== undefined) {
-						returnData.push(responseData as IDataObject);
-					}
-				}
+				const executionData = this.helpers.constructExecutionMetaData(
+					this.helpers.returnJsonArray(responseData as IDataObject[]),
+					{ itemData: { item: i } },
+				);
+				returnData.push(...executionData);
 			} catch (error) {
 				if (this.continueOnFail()) {
-					returnData.push({ error: error.message });
+					const executionData = this.helpers.constructExecutionMetaData(
+						this.helpers.returnJsonArray({ error: error.message }),
+						{ itemData: { item: i } },
+					);
+					returnData.push(...executionData);
 					continue;
 				}
 				throw error;
 			}
 		}
 
-		return [this.helpers.returnJsonArray(returnData)];
+		return [returnData];
 	}
 }

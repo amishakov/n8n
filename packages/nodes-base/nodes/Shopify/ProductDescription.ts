@@ -1,4 +1,4 @@
-import { INodeProperties } from 'n8n-workflow';
+import type { INodeProperties } from 'n8n-workflow';
 
 export const productOperations: INodeProperties[] = [
 	{
@@ -193,7 +193,7 @@ export const productFields: INodeProperties[] = [
 				displayName: 'Options',
 				name: 'productOptions',
 				type: 'fixedCollection',
-				placeholder: 'Add Option',
+				placeholder: 'Add option',
 				typeOptions: {
 					multipleValues: true,
 				},
@@ -417,7 +417,7 @@ export const productFields: INodeProperties[] = [
 				displayName: 'Options',
 				name: 'productOptions',
 				type: 'fixedCollection',
-				placeholder: 'Add Option',
+				placeholder: 'Add option',
 				typeOptions: {
 					multipleValues: true,
 				},

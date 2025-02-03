@@ -1,23 +1,19 @@
-import { OptionsWithUri } from 'request';
-
-import {
+import type {
+	IDataObject,
 	IExecuteFunctions,
-	IExecuteSingleFunctions,
 	IHookFunctions,
 	ILoadOptionsFunctions,
 	IWebhookFunctions,
-} from 'n8n-core';
-
-import { IDataObject, IOAuth2Options, NodeApiError } from 'n8n-workflow';
+	IOAuth2Options,
+	JsonObject,
+	IHttpRequestMethods,
+	IRequestOptions,
+} from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
 
 export async function clickupApiRequest(
-	this:
-		| IHookFunctions
-		| IExecuteFunctions
-		| IExecuteSingleFunctions
-		| ILoadOptionsFunctions
-		| IWebhookFunctions,
-	method: string,
+	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions | IWebhookFunctions,
+	method: IHttpRequestMethods,
 	resource: string,
 
 	body: any = {},
@@ -25,14 +21,14 @@ export async function clickupApiRequest(
 	uri?: string,
 	_option: IDataObject = {},
 ): Promise<any> {
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		headers: {
 			'Content-Type': 'application/json',
 		},
 		method,
 		qs,
 		body,
-		uri: uri ?? `https://api.clickup.com/api/v2${resource}`,
+		uri: uri || `https://api.clickup.com/api/v2${resource}`,
 		json: true,
 	};
 
@@ -46,7 +42,6 @@ export async function clickupApiRequest(
 				keepBearer: false,
 				tokenType: 'Bearer',
 			};
-			// @ts-ignore
 			return await this.helpers.requestOAuth2.call(
 				this,
 				'clickUpOAuth2Api',
@@ -55,14 +50,14 @@ export async function clickupApiRequest(
 			);
 		}
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
 export async function clickupApiRequestAllItems(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
 	propertyName: string,
-	method: string,
+	method: IHttpRequestMethods,
 	resource: string,
 
 	body: any = {},
@@ -75,9 +70,10 @@ export async function clickupApiRequestAllItems(
 
 	do {
 		responseData = await clickupApiRequest.call(this, method, resource, body, query);
-		returnData.push.apply(returnData, responseData[propertyName]);
+		returnData.push.apply(returnData, responseData[propertyName] as IDataObject[]);
 		query.page++;
-		if (query.limit && query.limit <= returnData.length) {
+		const limit = query.limit as number | undefined;
+		if (limit && limit <= returnData.length) {
 			return returnData;
 		}
 	} while (responseData[propertyName] && responseData[propertyName].length !== 0);

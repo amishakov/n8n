@@ -1,8 +1,13 @@
-import { IExecuteFunctions, IHookFunctions } from 'n8n-core';
-
-import { IDataObject, ILoadOptionsFunctions, NodeApiError } from 'n8n-workflow';
-
-import { OptionsWithUri } from 'request';
+import type {
+	IExecuteFunctions,
+	IHookFunctions,
+	IDataObject,
+	ILoadOptionsFunctions,
+	JsonObject,
+	IHttpRequestMethods,
+	IRequestOptions,
+} from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
 
 /**
  * Make an API request to HackerNews
@@ -10,11 +15,11 @@ import { OptionsWithUri } from 'request';
  */
 export async function hackerNewsApiRequest(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	qs: IDataObject,
 ): Promise<any> {
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		method,
 		qs,
 		uri: `http://hn.algolia.com/api/v1/${endpoint}`,
@@ -24,7 +29,7 @@ export async function hackerNewsApiRequest(
 	try {
 		return await this.helpers.request(options);
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
@@ -36,7 +41,7 @@ export async function hackerNewsApiRequest(
  */
 export async function hackerNewsApiRequestAllItems(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	qs: IDataObject,
 ): Promise<any> {
@@ -49,7 +54,7 @@ export async function hackerNewsApiRequestAllItems(
 
 	do {
 		responseData = await hackerNewsApiRequest.call(this, method, endpoint, qs);
-		returnData.push.apply(returnData, responseData.hits);
+		returnData.push.apply(returnData, responseData.hits as IDataObject[]);
 
 		if (returnData !== undefined) {
 			itemsReceived += returnData.length;

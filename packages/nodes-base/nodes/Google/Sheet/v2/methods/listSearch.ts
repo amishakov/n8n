@@ -1,11 +1,12 @@
-import {
+import type {
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeListSearchItems,
 	INodeListSearchResult,
-	NodeOperationError,
 } from 'n8n-workflow';
-import { ResourceLocator } from '../helpers/GoogleSheets.types';
+import { NodeOperationError } from 'n8n-workflow';
+
+import type { ResourceLocator } from '../helpers/GoogleSheets.types';
 import { getSpreadsheetId } from '../helpers/GoogleSheets.utils';
 import { apiRequest } from '../transport';
 
@@ -24,7 +25,7 @@ export async function spreadSheetsSearch(
 		q: query.join(' and '),
 		pageToken: (paginationToken as string) || undefined,
 		fields: 'nextPageToken, files(id, name, webViewLink)',
-		orderBy: 'name_natural',
+		orderBy: 'modifiedByMeTime desc,name_natural',
 		includeItemsFromAllDrives: true,
 		supportsAllDrives: true,
 	};
@@ -51,8 +52,13 @@ export async function sheetsSearch(
 	this: ILoadOptionsFunctions,
 	_filter?: string,
 ): Promise<INodeListSearchResult> {
-	const { mode, value } = this.getNodeParameter('documentId', 0) as IDataObject;
-	const spreadsheetId = getSpreadsheetId(mode as ResourceLocator, value as string);
+	const documentId = this.getNodeParameter('documentId', 0) as IDataObject | null;
+
+	if (!documentId) return { results: [] };
+
+	const { mode, value } = documentId;
+
+	const spreadsheetId = getSpreadsheetId(this.getNode(), mode as ResourceLocator, value as string);
 
 	const query = {
 		fields: 'sheets.properties',
@@ -79,7 +85,6 @@ export async function sheetsSearch(
 		returnData.push({
 			name: sheet.properties!.title as string,
 			value: (sheet.properties!.sheetId as number) || 'gid=0',
-			//prettier-ignore
 			url: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit#gid=${sheet.properties!.sheetId}`,
 		});
 	}

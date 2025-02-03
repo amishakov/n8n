@@ -1,22 +1,20 @@
-import { get } from 'lodash';
-
-import { parseString } from 'xml2js';
-
-import {
+import { pascalCase } from 'change-case';
+import get from 'lodash/get';
+import type {
+	IDataObject,
 	IExecuteFunctions,
 	IHookFunctions,
 	ILoadOptionsFunctions,
 	IWebhookFunctions,
-} from 'n8n-core';
-
-import { IDataObject, IHttpRequestOptions } from 'n8n-workflow';
-
-import { pascalCase } from 'change-case';
+	IHttpRequestOptions,
+	IHttpRequestMethods,
+} from 'n8n-workflow';
+import { parseString } from 'xml2js';
 
 export async function awsApiRequest(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions | IWebhookFunctions,
 	service: string,
-	method: string,
+	method: IHttpRequestMethods,
 	path: string,
 	body?: string | Buffer | IDataObject,
 	_query: IDataObject = {},
@@ -41,13 +39,13 @@ export async function awsApiRequest(
 	if (Object.keys(option).length !== 0) {
 		Object.assign(requestOptions, option);
 	}
-	return this.helpers.requestWithAuthentication.call(this, 'aws', requestOptions);
+	return await this.helpers.requestWithAuthentication.call(this, 'aws', requestOptions);
 }
 
 export async function awsApiRequestREST(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
 	service: string,
-	method: string,
+	method: IHttpRequestMethods,
 	path: string,
 	body?: string,
 	query: IDataObject = {},
@@ -67,7 +65,7 @@ export async function awsApiRequestREST(
 		region,
 	);
 	try {
-		return JSON.parse(response);
+		return JSON.parse(response as string);
 	} catch (error) {
 		return response;
 	}
@@ -76,7 +74,7 @@ export async function awsApiRequestREST(
 export async function awsApiRequestSOAP(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions | IWebhookFunctions,
 	service: string,
-	method: string,
+	method: IHttpRequestMethods,
 	path: string,
 	body?: string | Buffer | IDataObject,
 	query: IDataObject = {},
@@ -97,7 +95,7 @@ export async function awsApiRequestSOAP(
 	);
 	try {
 		return await new Promise((resolve, reject) => {
-			parseString(response, { explicitArray: false }, (err, data) => {
+			parseString(response as string, { explicitArray: false }, (err, data) => {
 				if (err) {
 					return reject(err);
 				}
@@ -113,7 +111,7 @@ export async function awsApiRequestSOAPAllItems(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions | IWebhookFunctions,
 	propertyName: string,
 	service: string,
-	method: string,
+	method: IHttpRequestMethods,
 	path: string,
 	body?: string,
 	query: IDataObject = {},
@@ -139,25 +137,26 @@ export async function awsApiRequestSOAPAllItems(
 		);
 
 		//https://forums.aws.amazon.com/thread.jspa?threadID=55746
-		if (get(responseData, `${propertyName.split('.')[0]}.NextContinuationToken`)) {
-			query['continuation-token'] = get(
-				responseData,
-				`${propertyName.split('.')[0]}.NextContinuationToken`,
-			);
+		if (get(responseData, [propertyName.split('.')[0], 'NextContinuationToken'])) {
+			query['continuation-token'] = get(responseData, [
+				propertyName.split('.')[0],
+				'NextContinuationToken',
+			]);
 		}
 		if (get(responseData, propertyName)) {
 			if (Array.isArray(get(responseData, propertyName))) {
-				returnData.push.apply(returnData, get(responseData, propertyName));
+				returnData.push.apply(returnData, get(responseData, propertyName) as IDataObject[]);
 			} else {
-				returnData.push(get(responseData, propertyName));
+				returnData.push(get(responseData, propertyName) as IDataObject);
 			}
 		}
-		if (query.limit && query.limit <= returnData.length) {
+		const limit = query.limit as number | undefined;
+		if (limit && limit <= returnData.length) {
 			return returnData;
 		}
 	} while (
-		get(responseData, `${propertyName.split('.')[0]}.IsTruncated`) !== undefined &&
-		get(responseData, `${propertyName.split('.')[0]}.IsTruncated`) !== 'false'
+		get(responseData, [propertyName.split('.')[0], 'IsTruncated']) !== undefined &&
+		get(responseData, [propertyName.split('.')[0], 'IsTruncated']) !== 'false'
 	);
 
 	return returnData;

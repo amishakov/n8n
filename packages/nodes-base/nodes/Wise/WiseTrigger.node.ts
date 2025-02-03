@@ -1,22 +1,17 @@
-import { IHookFunctions, IWebhookFunctions } from 'n8n-core';
-
-import {
+import { createVerify } from 'crypto';
+import type {
+	IHookFunctions,
+	IWebhookFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeType,
 	INodeTypeDescription,
 	IWebhookResponseData,
 } from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
 
-import {
-	getTriggerName,
-	livePublicKey,
-	Profile,
-	testPublicKey,
-	wiseApiRequest,
-} from './GenericFunctions';
-
-import { createVerify } from 'crypto';
+import type { Profile } from './GenericFunctions';
+import { getTriggerName, livePublicKey, testPublicKey, wiseApiRequest } from './GenericFunctions';
 
 export class WiseTrigger implements INodeType {
 	description: INodeTypeDescription = {
@@ -31,7 +26,7 @@ export class WiseTrigger implements INodeType {
 			name: 'Wise Trigger',
 		},
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'wiseApi',
@@ -52,7 +47,7 @@ export class WiseTrigger implements INodeType {
 				name: 'profileId',
 				type: 'options',
 				description:
-					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>',
+					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 				required: true,
 				typeOptions: {
 					loadOptionsMethod: 'getProfiles',
@@ -70,6 +65,11 @@ export class WiseTrigger implements INodeType {
 						name: 'Balance Credit',
 						value: 'balanceCredit',
 						description: 'Triggered every time a balance account is credited',
+					},
+					{
+						name: 'Balance Update',
+						value: 'balanceUpdate',
+						description: 'Triggered every time a balance account is credited or debited',
 					},
 					{
 						name: 'Transfer Active Case',
@@ -98,7 +98,6 @@ export class WiseTrigger implements INodeType {
 		},
 	};
 
-	// @ts-ignore
 	webhookMethods = {
 		default: {
 			async checkExists(this: IHookFunctions): Promise<boolean> {
@@ -191,7 +190,7 @@ export class WiseTrigger implements INodeType {
 		}
 
 		return {
-			workflowData: [this.helpers.returnJsonArray(req.body)],
+			workflowData: [this.helpers.returnJsonArray(req.body as IDataObject)],
 		};
 	}
 }

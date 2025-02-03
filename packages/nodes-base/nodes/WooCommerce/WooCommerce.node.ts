@@ -1,12 +1,15 @@
-import { IExecuteFunctions } from 'n8n-core';
 import {
-	IDataObject,
-	ILoadOptionsFunctions,
-	INodeExecutionData,
-	INodePropertyOptions,
-	INodeType,
-	INodeTypeDescription,
+	type IExecuteFunctions,
+	type IDataObject,
+	type ILoadOptionsFunctions,
+	type INodeExecutionData,
+	type INodePropertyOptions,
+	type INodeType,
+	type INodeTypeDescription,
+	NodeConnectionType,
 } from 'n8n-workflow';
+
+import { customerFields, customerOperations } from './descriptions';
 import {
 	adjustMetadata,
 	setFields,
@@ -15,10 +18,8 @@ import {
 	woocommerceApiRequest,
 	woocommerceApiRequestAllItems,
 } from './GenericFunctions';
-import { productFields, productOperations } from './ProductDescription';
 import { orderFields, orderOperations } from './OrderDescription';
-import { IDimension, IImage, IProduct } from './ProductInterface';
-import {
+import type {
 	IAddress,
 	ICouponLine,
 	IFeeLine,
@@ -26,8 +27,8 @@ import {
 	IOrder,
 	IShoppingLine,
 } from './OrderInterface';
-
-import { customerFields, customerOperations } from './descriptions';
+import { productFields, productOperations } from './ProductDescription';
+import type { IDimension, IImage, IProduct } from './ProductInterface';
 
 export class WooCommerce implements INodeType {
 	description: INodeTypeDescription = {
@@ -41,8 +42,9 @@ export class WooCommerce implements INodeType {
 		defaults: {
 			name: 'WooCommerce',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
+		usableAsTool: true,
 		credentials: [
 			{
 				name: 'wooCommerceApi',
@@ -82,7 +84,7 @@ export class WooCommerce implements INodeType {
 
 	methods = {
 		loadOptions: {
-			// Get all the available categories to display them to user so that he can
+			// Get all the available categories to display them to user so that they can
 			// select them easily
 			async getCategories(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -102,7 +104,7 @@ export class WooCommerce implements INodeType {
 				}
 				return returnData;
 			},
-			// Get all the available tags to display them to user so that he can
+			// Get all the available tags to display them to user so that they can
 			// select them easily
 			async getTags(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -419,7 +421,6 @@ export class WooCommerce implements INodeType {
 						body.line_items = lineItems;
 						setMetadata(lineItems);
 						toSnakeCase(lineItems);
-						//@ts-ignore
 					}
 					const metadata = (this.getNodeParameter('metadataUi', i) as IDataObject)
 						.metadataValues as IDataObject[];
@@ -579,11 +580,11 @@ export class WooCommerce implements INodeType {
 				}
 			}
 			const executionData = this.helpers.constructExecutionMetaData(
-				this.helpers.returnJsonArray(responseData),
+				this.helpers.returnJsonArray(responseData as IDataObject[]),
 				{ itemData: { item: i } },
 			);
 			returnData.push(...executionData);
 		}
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

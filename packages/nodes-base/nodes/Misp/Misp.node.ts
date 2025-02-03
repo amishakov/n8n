@@ -1,14 +1,12 @@
-import { IExecuteFunctions, ILoadOptionsFunctions } from 'n8n-core';
-
-import { IDataObject, INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
-
 import {
-	mispApiRequest,
-	mispApiRequestAllItems,
-	throwOnEmptyUpdate,
-	throwOnInvalidUrl,
-	throwOnMissingSharingGroup,
-} from './GenericFunctions';
+	type IExecuteFunctions,
+	type ILoadOptionsFunctions,
+	type IDataObject,
+	type INodeExecutionData,
+	type INodeType,
+	type INodeTypeDescription,
+	NodeConnectionType,
+} from 'n8n-workflow';
 
 import {
 	attributeFields,
@@ -23,6 +21,8 @@ import {
 	galaxyOperations,
 	noticelistFields,
 	noticelistOperations,
+	objectOperations,
+	objectFields,
 	organisationFields,
 	organisationOperations,
 	tagFields,
@@ -32,8 +32,15 @@ import {
 	warninglistFields,
 	warninglistOperations,
 } from './descriptions';
-
-import { LoadedOrgs, LoadedSharingGroups, LoadedTags, LoadedUsers } from './types';
+import {
+	mispApiRequest,
+	mispApiRequestAllItems,
+	mispApiRestSearch,
+	throwOnEmptyUpdate,
+	throwOnInvalidUrl,
+	throwOnMissingSharingGroup,
+} from './GenericFunctions';
+import type { LoadedOrgs, LoadedSharingGroups, LoadedTags, LoadedUsers } from './types';
 
 export class Misp implements INodeType {
 	description: INodeTypeDescription = {
@@ -47,8 +54,8 @@ export class Misp implements INodeType {
 		defaults: {
 			name: 'MISP',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'mispApi',
@@ -87,6 +94,10 @@ export class Misp implements INodeType {
 						value: 'noticelist',
 					},
 					{
+						name: 'Object',
+						value: 'object',
+					},
+					{
 						name: 'Organisation',
 						value: 'organisation',
 					},
@@ -117,6 +128,8 @@ export class Misp implements INodeType {
 			...galaxyFields,
 			...noticelistOperations,
 			...noticelistFields,
+			...objectOperations,
+			...objectFields,
 			...organisationOperations,
 			...organisationFields,
 			...tagOperations,
@@ -228,6 +241,12 @@ export class Misp implements INodeType {
 						// ----------------------------------------
 
 						responseData = await mispApiRequestAllItems.call(this, '/attributes');
+					} else if (operation === 'search') {
+						// ----------------------------------------
+						//            attribute: search
+						// ----------------------------------------
+
+						responseData = await mispApiRestSearch.call(this, 'attributes', i);
 					} else if (operation === 'update') {
 						// ----------------------------------------
 						//            attribute: update
@@ -295,6 +314,12 @@ export class Misp implements INodeType {
 						// ----------------------------------------
 
 						responseData = await mispApiRequestAllItems.call(this, '/events');
+					} else if (operation === 'search') {
+						// ----------------------------------------
+						//            event: search
+						// ----------------------------------------
+
+						responseData = await mispApiRestSearch.call(this, 'events', i);
 					} else if (operation === 'publish') {
 						// ----------------------------------------
 						//              event: publish
@@ -494,6 +519,17 @@ export class Misp implements INodeType {
 							Noticelist: unknown;
 						}>;
 						responseData = responseData.map((entry) => entry.Noticelist);
+					}
+				} else if (resource === 'object') {
+					// **********************************************************************
+					//                                    object
+					// **********************************************************************
+					if (operation === 'search') {
+						// ----------------------------------------
+						//            attribute: search
+						// ----------------------------------------
+
+						responseData = await mispApiRestSearch.call(this, 'objects', i);
 					}
 				} else if (resource === 'organisation') {
 					// **********************************************************************
@@ -742,13 +778,13 @@ export class Misp implements INodeType {
 			}
 
 			const executionData = this.helpers.constructExecutionMetaData(
-				this.helpers.returnJsonArray(responseData),
+				this.helpers.returnJsonArray(responseData as IDataObject[]),
 				{ itemData: { item: i } },
 			);
 
 			returnData.push(...executionData);
 		}
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

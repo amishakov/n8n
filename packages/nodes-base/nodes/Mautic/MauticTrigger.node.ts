@@ -1,15 +1,15 @@
-import { parse as urlParse } from 'url';
-
-import { IHookFunctions, IWebhookFunctions } from 'n8n-core';
-
 import {
-	IDataObject,
-	ILoadOptionsFunctions,
-	INodePropertyOptions,
-	INodeType,
-	INodeTypeDescription,
-	IWebhookResponseData,
+	type IHookFunctions,
+	type IWebhookFunctions,
+	type IDataObject,
+	type ILoadOptionsFunctions,
+	type INodePropertyOptions,
+	type INodeType,
+	type INodeTypeDescription,
+	type IWebhookResponseData,
+	NodeConnectionType,
 } from 'n8n-workflow';
+import { parse as urlParse } from 'url';
 
 import { mauticApiRequest } from './GenericFunctions';
 
@@ -25,7 +25,7 @@ export class MauticTrigger implements INodeType {
 			name: 'Mautic Trigger',
 		},
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'mauticApi',
@@ -76,7 +76,7 @@ export class MauticTrigger implements INodeType {
 				name: 'events',
 				type: 'multiOptions',
 				description:
-					'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>',
+					'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 				required: true,
 				typeOptions: {
 					loadOptionsMethod: 'getEvents',
@@ -105,12 +105,12 @@ export class MauticTrigger implements INodeType {
 
 	methods = {
 		loadOptions: {
-			// Get all the events to display them to user so that he can
+			// Get all the events to display them to user so that they can
 			// select them easily
 			async getEvents(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
 				const { triggers } = await mauticApiRequest.call(this, 'GET', '/hooks/triggers');
-				for (const [key, value] of Object.entries(triggers)) {
+				for (const [key, value] of Object.entries(triggers as IDataObject)) {
 					const eventId = key;
 					const eventName = (value as IDataObject).label as string;
 					const eventDecription = (value as IDataObject).description as string;
@@ -125,7 +125,6 @@ export class MauticTrigger implements INodeType {
 		},
 	};
 
-	// @ts-ignore
 	webhookMethods = {
 		default: {
 			async checkExists(this: IHookFunctions): Promise<boolean> {
@@ -175,7 +174,7 @@ export class MauticTrigger implements INodeType {
 	async webhook(this: IWebhookFunctions): Promise<IWebhookResponseData> {
 		const req = this.getRequestObject();
 		return {
-			workflowData: [this.helpers.returnJsonArray(req.body)],
+			workflowData: [this.helpers.returnJsonArray(req.body as IDataObject)],
 		};
 	}
 }

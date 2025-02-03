@@ -1,8 +1,14 @@
-import { IExecuteFunctions, IHookFunctions, ILoadOptionsFunctions } from 'n8n-core';
-
-import { OptionsWithUri } from 'request';
-
-import { IDataObject, IPollFunctions, NodeApiError } from 'n8n-workflow';
+import type {
+	IDataObject,
+	IExecuteFunctions,
+	IHookFunctions,
+	IHttpRequestMethods,
+	ILoadOptionsFunctions,
+	IPollFunctions,
+	IRequestOptions,
+	JsonObject,
+} from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
 
 /**
  * Make an API request to Airtable
@@ -10,7 +16,7 @@ import { IDataObject, IPollFunctions, NodeApiError } from 'n8n-workflow';
  */
 export async function apiRequest(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions | IPollFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	body: IDataObject,
 	query?: IDataObject,
@@ -19,7 +25,7 @@ export async function apiRequest(
 ): Promise<any> {
 	const credentials = await this.getCredentials('stackbyApi');
 
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		headers: {
 			'api-key': credentials.apiKey,
 			'Content-Type': 'application/json',
@@ -27,7 +33,7 @@ export async function apiRequest(
 		method,
 		body,
 		qs: query,
-		uri: uri ?? `https://stackby.com/api/betav1${endpoint}`,
+		uri: uri || `https://stackby.com/api/betav1${endpoint}`,
 		json: true,
 	};
 
@@ -42,7 +48,7 @@ export async function apiRequest(
 	try {
 		return await this.helpers.request(options);
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
@@ -54,11 +60,11 @@ export async function apiRequest(
  */
 export async function apiRequestAllItems(
 	this: IHookFunctions | IExecuteFunctions | IPollFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	body: IDataObject = {},
 	query: IDataObject = {},
-): Promise<any> {
+) {
 	query.maxrecord = 100;
 
 	query.offset = 0;
@@ -69,7 +75,7 @@ export async function apiRequestAllItems(
 
 	do {
 		responseData = await apiRequest.call(this, method, endpoint, body, query);
-		returnData.push.apply(returnData, responseData);
+		returnData.push.apply(returnData, responseData as IDataObject[]);
 		query.offset += query.maxrecord;
 	} while (responseData.length !== 0);
 

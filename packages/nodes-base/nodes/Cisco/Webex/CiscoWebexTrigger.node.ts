@@ -1,6 +1,13 @@
-import { IHookFunctions, IWebhookFunctions } from 'n8n-core';
-
-import { IDataObject, INodeType, INodeTypeDescription, IWebhookResponseData } from 'n8n-workflow';
+import { createHmac } from 'crypto';
+import type {
+	IHookFunctions,
+	IWebhookFunctions,
+	IDataObject,
+	INodeType,
+	INodeTypeDescription,
+	IWebhookResponseData,
+} from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
 
 import {
 	getAutomaticSecret,
@@ -9,8 +16,6 @@ import {
 	webexApiRequest,
 	webexApiRequestAllItems,
 } from './GenericFunctions';
-
-import { createHmac } from 'crypto';
 
 export class CiscoWebexTrigger implements INodeType {
 	description: INodeTypeDescription = {
@@ -26,7 +31,7 @@ export class CiscoWebexTrigger implements INodeType {
 			name: 'Webex by Cisco Trigger',
 		},
 		inputs: [],
-		outputs: ['main'],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'ciscoWebexOAuth2Api',
@@ -485,7 +490,6 @@ export class CiscoWebexTrigger implements INodeType {
 		],
 	};
 
-	// @ts-ignore (because of request)
 	webhookMethods = {
 		default: {
 			async checkExists(this: IHookFunctions): Promise<boolean> {
@@ -564,7 +568,7 @@ export class CiscoWebexTrigger implements INodeType {
 					}
 
 					// Remove from the static workflow data so that it is clear
-					// that no webhooks are registred anymore
+					// that no webhooks are registered anymore
 					delete webhookData.webhookId;
 				}
 				return true;

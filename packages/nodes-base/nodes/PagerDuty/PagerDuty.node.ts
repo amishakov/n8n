@@ -1,6 +1,7 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import { snakeCase } from 'change-case';
+import moment from 'moment-timezone';
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
@@ -8,26 +9,18 @@ import {
 	INodeType,
 	INodeTypeDescription,
 } from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
 
 import {
 	keysToSnakeCase,
 	pagerDutyApiRequest,
 	pagerDutyApiRequestAllItems,
 } from './GenericFunctions';
-
 import { incidentFields, incidentOperations } from './IncidentDescription';
-
+import type { IIncident } from './IncidentInterface';
 import { incidentNoteFields, incidentNoteOperations } from './IncidentNoteDescription';
-
 import { logEntryFields, logEntryOperations } from './LogEntryDescription';
-
 import { userFields, userOperations } from './UserDescription';
-
-import { IIncident } from './IncidentInterface';
-
-import { snakeCase } from 'change-case';
-
-import moment from 'moment-timezone';
 
 export class PagerDuty implements INodeType {
 	description: INodeTypeDescription = {
@@ -41,8 +34,8 @@ export class PagerDuty implements INodeType {
 		defaults: {
 			name: 'PagerDuty',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'pagerDutyApi',
@@ -122,7 +115,7 @@ export class PagerDuty implements INodeType {
 
 	methods = {
 		loadOptions: {
-			// Get all the available escalation policies to display them to user so that he can
+			// Get all the available escalation policies to display them to user so that they can
 			// select them easily
 			async getEscalationPolicies(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -142,7 +135,7 @@ export class PagerDuty implements INodeType {
 				}
 				return returnData;
 			},
-			// Get all the available priorities to display them to user so that he can
+			// Get all the available priorities to display them to user so that they can
 			// select them easily
 			async getPriorities(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -164,7 +157,7 @@ export class PagerDuty implements INodeType {
 				}
 				return returnData;
 			},
-			// Get all the available services to display them to user so that he can
+			// Get all the available services to display them to user so that they can
 			// select them easily
 			async getServices(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -184,7 +177,7 @@ export class PagerDuty implements INodeType {
 				}
 				return returnData;
 			},
-			// Get all the timezones to display them to user so that he can
+			// Get all the timezones to display them to user so that they can
 			// select them easily
 			async getTimezones(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const returnData: INodePropertyOptions[] = [];
@@ -456,7 +449,7 @@ export class PagerDuty implements INodeType {
 				}
 
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as IDataObject[]),
 					{ itemData: { item: i } },
 				);
 
@@ -473,6 +466,6 @@ export class PagerDuty implements INodeType {
 				throw error;
 			}
 		}
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

@@ -1,7 +1,9 @@
-import N8nUsersList from './UsersList.vue';
 import { action } from '@storybook/addon-actions';
-import type { StoryFn } from '@storybook/vue';
-import { IUser } from '@/types';
+import type { StoryFn } from '@storybook/vue3';
+
+import type { IUser } from 'n8n-design-system/types';
+
+import N8nUsersList from './UsersList.vue';
 
 export default {
 	title: 'Modules/UsersList',
@@ -13,17 +15,16 @@ export default {
 };
 
 const methods = {
-	onReinvite: action('reinvite'),
-	onDelete: action('delete'),
+	action: ({ action: actionName }: { action: string; userId: string }) => action(actionName),
 };
 
 const Template: StoryFn = (args, { argTypes }) => ({
+	setup: () => ({ args }),
 	props: Object.keys(argTypes),
 	components: {
 		N8nUsersList,
 	},
-	template:
-		'<n8n-users-list v-bind="$props" :actions="actions" @reinvite="onReinvite" @delete="onDelete" />',
+	template: '<n8n-users-list v-bind="args" :actions="actions" @action="action" />',
 	methods,
 });
 
@@ -50,10 +51,8 @@ UsersList.args = {
 			isDefaultUser: false,
 			isPendingUser: false,
 			isOwner: true,
-			globalRole: {
-				name: 'owner',
-				id: 1,
-			},
+			signInType: 'email',
+			disabled: false,
 		},
 		{
 			id: '2',
@@ -64,10 +63,8 @@ UsersList.args = {
 			isDefaultUser: false,
 			isPendingUser: false,
 			isOwner: false,
-			globalRole: {
-				name: 'member',
-				id: '2',
-			},
+			signInType: 'ldap',
+			disabled: true,
 		},
 		{
 			id: '3',
@@ -75,10 +72,6 @@ UsersList.args = {
 			isDefaultUser: false,
 			isPendingUser: true,
 			isOwner: false,
-			globalRole: {
-				name: 'member',
-				id: '2',
-			},
 		},
 	],
 	currentUserId: '1',

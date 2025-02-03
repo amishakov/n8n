@@ -1,28 +1,31 @@
-import { OptionsWithUri } from 'request';
+import moment from 'moment-timezone';
+import type {
+	IExecuteFunctions,
+	IHookFunctions,
+	ILoadOptionsFunctions,
+	IDataObject,
+	IHttpRequestMethods,
+	IRequestOptions,
+} from 'n8n-workflow';
+import { ApplicationError, jsonParse } from 'n8n-workflow';
 
-import { IExecuteFunctions, IHookFunctions, ILoadOptionsFunctions } from 'n8n-core';
-
-import { IDataObject, jsonParse } from 'n8n-workflow';
-
-import moment from 'moment';
 import { Eq } from './QueryFunctions';
 
 export async function theHiveApiRequest(
 	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	resource: string,
-
-	body: any = {},
+	body: IDataObject = {},
 	query: IDataObject = {},
 	uri?: string,
 	option: IDataObject = {},
-): Promise<any> {
+) {
 	const credentials = await this.getCredentials('theHiveApi');
 
-	let options: OptionsWithUri = {
+	let options: IRequestOptions = {
 		method,
 		qs: query,
-		uri: uri ?? `${credentials.url}/api${resource}`,
+		uri: uri || `${credentials.url}/api${resource}`,
 		body,
 		rejectUnauthorized: !credentials.allowUnauthorizedCerts,
 		json: true,
@@ -39,7 +42,7 @@ export async function theHiveApiRequest(
 	if (Object.keys(query).length === 0) {
 		delete options.qs;
 	}
-	return this.helpers.requestWithAuthentication.call(this, 'theHiveApi', options);
+	return await this.helpers.requestWithAuthentication.call(this, 'theHiveApi', options);
 }
 
 // Helpers functions
@@ -76,7 +79,7 @@ export function prepareOptional(optionals: IDataObject): IDataObject {
 				try {
 					response[key] = jsonParse(optionals[key] as string);
 				} catch (error) {
-					throw new Error('Invalid JSON for artifacts');
+					throw new ApplicationError('Invalid JSON for artifacts', { level: 'warning' });
 				}
 			} else if (key === 'tags') {
 				response[key] = splitTags(optionals[key] as string);
@@ -104,7 +107,7 @@ export async function prepareCustomFields(
 			try {
 				customFieldsJson = jsonParse(customFieldsJson);
 			} catch (error) {
-				throw new Error('Invalid JSON for customFields');
+				throw new ApplicationError('Invalid JSON for customFields', { level: 'warning' });
 			}
 		}
 
@@ -116,7 +119,7 @@ export async function prepareCustomFields(
 
 			return customFields;
 		} else if (customFieldsJson) {
-			throw Error('customFieldsJson value is invalid');
+			throw new ApplicationError('customFieldsJson value is invalid', { level: 'warning' });
 		}
 	} else if (additionalFields.customFieldsUi) {
 		// Get Custom Field Types from TheHive
@@ -131,7 +134,7 @@ export async function prepareCustomFields(
 		const hiveCustomFields =
 			version === 'v1'
 				? requestResult
-				: Object.keys(requestResult).map((key) => requestResult[key]);
+				: Object.keys(requestResult as IDataObject).map((key) => requestResult[key]);
 		// Build reference to type mapping object
 		const referenceTypeMapping = hiveCustomFields.reduce(
 			(acc: IDataObject, curr: IDataObject) => ((acc[curr.reference as string] = curr.type), acc),

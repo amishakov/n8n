@@ -1,6 +1,7 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import {
+import moment from 'moment-timezone';
+import { NodeConnectionType } from 'n8n-workflow';
+import type {
+	IExecuteFunctions,
 	IDataObject,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
@@ -9,35 +10,23 @@ import {
 	INodeTypeDescription,
 } from 'n8n-workflow';
 
-import { clockifyApiRequest, clockifyApiRequestAllItems } from './GenericFunctions';
-
-import { IClientDto, IWorkspaceDto } from './WorkpaceInterfaces';
-
-import { IUserDto } from './UserDtos';
-
-import { IProjectDto } from './ProjectInterfaces';
-
 import { clientFields, clientOperations } from './ClientDescription';
-
+import { clockifyApiRequest, clockifyApiRequestAllItems } from './GenericFunctions';
 import { projectFields, projectOperations } from './ProjectDescription';
-
+import type { IProjectDto } from './ProjectInterfaces';
 import { tagFields, tagOperations } from './TagDescription';
-
 import { taskFields, taskOperations } from './TaskDescription';
-
 import { timeEntryFields, timeEntryOperations } from './TimeEntryDescription';
-
 import { userFields, userOperations } from './UserDescription';
-
+import type { IUserDto } from './UserDtos';
+import type { IClientDto, IWorkspaceDto } from './WorkpaceInterfaces';
 import { workspaceFields, workspaceOperations } from './WorkspaceDescription';
-
-import moment from 'moment-timezone';
 
 export class Clockify implements INodeType {
 	description: INodeTypeDescription = {
 		displayName: 'Clockify',
 		name: 'clockify',
-		icon: 'file:clockify.svg',
+		icon: { light: 'file:clockify.svg', dark: 'file:clockify.dark.svg' },
 		group: ['transform'],
 		version: 1,
 		subtitle: '={{$parameter["operation"] + ": " + $parameter["resource"]}}',
@@ -45,8 +34,8 @@ export class Clockify implements INodeType {
 		defaults: {
 			name: 'Clockify',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'clockifyApi',
@@ -104,7 +93,7 @@ export class Clockify implements INodeType {
 				name: 'workspaceId',
 				type: 'options',
 				description:
-					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code-examples/expressions/">expression</a>',
+					'Choose from the list, or specify an ID using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 				typeOptions: {
 					loadOptionsMethod: 'listWorkspaces',
 				},
@@ -765,7 +754,7 @@ export class Clockify implements INodeType {
 							body.start = moment.tz(body.start, timezone).utc().format();
 						} else {
 							// even if you do not want to update the start time, it always has to be set
-							// to make it more simple to the user, if he did not set a start time look for the current start time
+							// to make it more simple to the user, if they did not set a start time look for the current start time
 							// and set it
 							const {
 								timeInterval: { start },
@@ -836,7 +825,7 @@ export class Clockify implements INodeType {
 				}
 
 				const executionData = this.helpers.constructExecutionMetaData(
-					this.helpers.returnJsonArray(responseData),
+					this.helpers.returnJsonArray(responseData as IDataObject[]),
 					{ itemData: { item: i } },
 				);
 				returnData.push(...executionData);
@@ -849,6 +838,6 @@ export class Clockify implements INodeType {
 			}
 		}
 
-		return this.prepareOutputData(returnData);
+		return [returnData];
 	}
 }

@@ -1,30 +1,22 @@
-import { IExecuteFunctions } from 'n8n-core';
-
-import { cortexApiRequest, getEntityLabel, prepareParameters, splitTags } from './GenericFunctions';
-
-import { analyzerFields, analyzersOperations } from './AnalyzerDescriptions';
-
-import {
+import * as changeCase from 'change-case';
+import { createHash } from 'crypto';
+import upperFirst from 'lodash/upperFirst';
+import type {
 	IDataObject,
+	IExecuteFunctions,
 	ILoadOptionsFunctions,
 	INodeExecutionData,
 	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
-	NodeOperationError,
 } from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
 
-import { responderFields, respondersOperations } from './ResponderDescription';
-
+import { analyzerFields, analyzersOperations } from './AnalyzerDescriptions';
+import type { IJob } from './AnalyzerInterface';
+import { cortexApiRequest, getEntityLabel, prepareParameters, splitTags } from './GenericFunctions';
 import { jobFields, jobOperations } from './JobDescription';
-
-import { upperFirst } from 'lodash';
-
-import { IJob } from './AnalyzerInterface';
-
-import { createHash } from 'crypto';
-
-import * as changeCase from 'change-case';
+import { responderFields, respondersOperations } from './ResponderDescription';
 
 export class Cortex implements INodeType {
 	description: INodeTypeDescription = {
@@ -38,8 +30,8 @@ export class Cortex implements INodeType {
 		defaults: {
 			name: 'Cortex',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'cortexApi',
@@ -193,24 +185,8 @@ export class Cortex implements INodeType {
 						}
 
 						if (observableType === 'file') {
-							const item = items[i];
-
-							if (item.binary === undefined) {
-								throw new NodeOperationError(this.getNode(), 'No binary data exists on item!', {
-									itemIndex: i,
-								});
-							}
-
 							const binaryPropertyName = this.getNodeParameter('binaryPropertyName', i);
-
-							if (item.binary[binaryPropertyName] === undefined) {
-								throw new NodeOperationError(
-									this.getNode(),
-									`No binary data property "${binaryPropertyName}" does not exists on item!`,
-									{ itemIndex: i },
-								);
-							}
-
+							const binaryData = this.helpers.assertBinaryData(i, binaryPropertyName);
 							const fileBufferData = await this.helpers.getBinaryDataBuffer(i, binaryPropertyName);
 
 							const options = {
@@ -218,8 +194,8 @@ export class Cortex implements INodeType {
 									data: {
 										value: fileBufferData,
 										options: {
-											contentType: item.binary[binaryPropertyName].mimeType,
-											filename: item.binary[binaryPropertyName].fileName,
+											contentType: binaryData.mimeType,
+											filename: binaryData.fileName,
 										},
 									},
 									_json: JSON.stringify({
@@ -238,8 +214,6 @@ export class Cortex implements INodeType {
 								'',
 								options,
 							)) as IJob;
-
-							continue;
 						} else {
 							const observableValue = this.getNodeParameter('observableValue', i) as string;
 
@@ -295,7 +269,7 @@ export class Cortex implements INodeType {
 
 							body = {
 								responderId,
-								label: getEntityLabel(entityJson),
+								label: getEntityLabel(entityJson as IDataObject),
 								dataType: `thehive:${entityType}`,
 								data: entityJson,
 								tlp: entityJson.tlp || 2,
@@ -337,27 +311,8 @@ export class Cortex implements INodeType {
 											element.data = artifactvalue.data as string;
 
 											if (artifactvalue.dataType === 'file') {
-												const item = items[i];
-
-												if (item.binary === undefined) {
-													throw new NodeOperationError(
-														this.getNode(),
-														'No binary data exists on item!',
-														{ itemIndex: i },
-													);
-												}
-
 												const binaryPropertyName = artifactvalue.binaryProperty as string;
-
-												if (item.binary[binaryPropertyName] === undefined) {
-													throw new NodeOperationError(
-														this.getNode(),
-														`No binary data property '${binaryPropertyName}' does not exists on item!`,
-														{ itemIndex: i },
-													);
-												}
-
-												const binaryData = item.binary[binaryPropertyName];
+												const binaryData = this.helpers.assertBinaryData(i, binaryPropertyName);
 
 												element.data = `${binaryData.fileName};${binaryData.mimeType};${binaryData.data}`;
 											}
@@ -373,24 +328,9 @@ export class Cortex implements INodeType {
 								// deal with file observable
 
 								if ((body.data as IDataObject).dataType === 'file') {
-									const item = items[i];
-
-									if (item.binary === undefined) {
-										throw new NodeOperationError(this.getNode(), 'No binary data exists on item!', {
-											itemIndex: i,
-										});
-									}
-
 									const binaryPropertyName = (body.data as IDataObject)
 										.binaryPropertyName as string;
-									if (item.binary[binaryPropertyName] === undefined) {
-										throw new NodeOperationError(
-											this.getNode(),
-											`No binary data property "${binaryPropertyName}" does not exists on item!`,
-											{ itemIndex: i },
-										);
-									}
-
+									const binaryData = this.helpers.assertBinaryData(i, binaryPropertyName);
 									const fileBufferData = await this.helpers.getBinaryDataBuffer(
 										i,
 										binaryPropertyName,
@@ -398,14 +338,14 @@ export class Cortex implements INodeType {
 									const sha256 = createHash('sha256').update(fileBufferData).digest('hex');
 
 									(body.data as IDataObject).attachment = {
-										name: item.binary[binaryPropertyName].fileName,
+										name: binaryData.fileName,
 										hashes: [
 											sha256,
 											createHash('sha1').update(fileBufferData).digest('hex'),
 											createHash('md5').update(fileBufferData).digest('hex'),
 										],
 										size: fileBufferData.byteLength,
-										contentType: item.binary[binaryPropertyName].mimeType,
+										contentType: binaryData.mimeType,
 										id: sha256,
 									};
 

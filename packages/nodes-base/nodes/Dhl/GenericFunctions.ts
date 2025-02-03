@@ -1,22 +1,19 @@
-import { OptionsWithUri } from 'request';
-
-import {
-	IExecuteFunctions,
-	IExecuteSingleFunctions,
-	IHookFunctions,
-	ILoadOptionsFunctions,
-} from 'n8n-core';
-
-import {
+import type {
 	ICredentialDataDecryptedObject,
 	ICredentialTestFunctions,
 	IDataObject,
-	NodeApiError,
+	IExecuteFunctions,
+	IHookFunctions,
+	IHttpRequestMethods,
+	ILoadOptionsFunctions,
+	IRequestOptions,
+	JsonObject,
 } from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
 
 export async function dhlApiRequest(
-	this: IHookFunctions | IExecuteFunctions | IExecuteSingleFunctions | ILoadOptionsFunctions,
-	method: string,
+	this: IHookFunctions | IExecuteFunctions | ILoadOptionsFunctions,
+	method: IHttpRequestMethods,
 	path: string,
 
 	body: any = {},
@@ -24,27 +21,27 @@ export async function dhlApiRequest(
 	uri?: string,
 	option: IDataObject = {},
 ): Promise<any> {
-	const credentials = (await this.getCredentials('dhlApi')) as { apiKey: string };
+	const credentials = await this.getCredentials<{ apiKey: string }>('dhlApi');
 
-	let options: OptionsWithUri = {
+	let options: IRequestOptions = {
 		headers: {
 			'DHL-API-Key': credentials.apiKey,
 		},
 		method,
 		qs,
 		body,
-		uri: uri ?? `https://api-eu.dhl.com${path}`,
+		uri: uri || `https://api-eu.dhl.com${path}`,
 		json: true,
 	};
 	options = Object.assign({}, options, option);
-	if (Object.keys(options.body).length === 0) {
+	if (Object.keys(options.body as IDataObject).length === 0) {
 		delete options.body;
 	}
 
 	try {
 		return await this.helpers.request(options);
 	} catch (error) {
-		throw new NodeApiError(this.getNode(), error);
+		throw new NodeApiError(this.getNode(), error as JsonObject);
 	}
 }
 
@@ -58,7 +55,7 @@ export async function validateCredentials(
 		apiKey: string;
 	};
 
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		headers: {
 			'DHL-API-Key': apiKey,
 		},
@@ -70,5 +67,5 @@ export async function validateCredentials(
 		json: true,
 	};
 
-	return this.helpers.request(options);
+	return await this.helpers.request(options);
 }

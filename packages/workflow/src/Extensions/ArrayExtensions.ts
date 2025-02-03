@@ -1,97 +1,21 @@
-import { ExpressionError, ExpressionExtensionError } from '../ExpressionError';
-import type { ExtensionMap } from './Extensions';
-import { compact as oCompact, merge as oMerge } from './ObjectExtensions';
+import deepEqual from 'deep-equal';
+import uniqWith from 'lodash/uniqWith';
 
-function deepCompare(left: unknown, right: unknown): boolean {
-	if (left === right) {
-		return true;
-	}
-
-	// Check to see if they're the basic type
-	if (typeof left !== typeof right) {
-		return false;
-	}
-
-	if (typeof left === 'number' && isNaN(left) && isNaN(right as number)) {
-		return true;
-	}
-
-	// Explicitly return false if certain primitives don't equal each other
-	if (['number', 'string', 'bigint', 'boolean', 'symbol'].includes(typeof left) && left !== right) {
-		return false;
-	}
-
-	// Quickly check how many properties each has to avoid checking obviously mismatching
-	// objects
-	if (Object.keys(left as object).length !== Object.keys(right as object).length) {
-		return false;
-	}
-
-	// Quickly check if they're arrays
-	if (Array.isArray(left) !== Array.isArray(right)) {
-		return false;
-	}
-
-	// Check if arrays are equal, ordering is important
-	if (Array.isArray(left)) {
-		if (left.length !== (right as unknown[]).length) {
-			return false;
-		}
-		return left.every((v, i) => deepCompare(v, (right as object[])[i]));
-	}
-
-	// Check right first quickly. This is to see if we have mismatched properties.
-	// We'll check the left more indepth later to cover all our bases.
-	for (const key in right as object) {
-		if ((left as object).hasOwnProperty(key) !== (right as object).hasOwnProperty(key)) {
-			return false;
-			// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
-		} else if (typeof (left as any)[key] !== typeof (right as any)[key]) {
-			return false;
-		}
-	}
-
-	// Check left more in depth
-	for (const key in left as object) {
-		if ((left as object).hasOwnProperty(key) !== (right as object).hasOwnProperty(key)) {
-			return false;
-			// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
-		} else if (typeof (left as any)[key] !== typeof (right as any)[key]) {
-			return false;
-		}
-
-		if (
-			// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
-			typeof (left as any)[key] === 'object'
-		) {
-			if (
-				// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
-				(left as any)[key] !== (right as any)[key] &&
-				// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
-				!deepCompare((left as any)[key], (right as any)[key])
-			) {
-				return false;
-			}
-		} else {
-			// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
-			if ((left as any)[key] !== (right as any)[key]) {
-				return false;
-			}
-		}
-	}
-
-	return true;
-}
+import type { Extension, ExtensionMap } from './Extensions';
+import { compact as oCompact } from './ObjectExtensions';
+import { ExpressionExtensionError } from '../errors/expression-extension.error';
+import { ExpressionError } from '../errors/expression.error';
+import { randomInt } from '../utils';
 
 function first(value: unknown[]): unknown {
 	return value[0];
 }
 
-function isBlank(value: unknown[]): boolean {
+function isEmpty(value: unknown[]): boolean {
 	return value.length === 0;
 }
 
-function isPresent(value: unknown[]): boolean {
+function isNotEmpty(value: unknown[]): boolean {
 	return value.length > 0;
 }
 
@@ -99,57 +23,61 @@ function last(value: unknown[]): unknown {
 	return value[value.length - 1];
 }
 
-function length(value: unknown[]): number {
-	return Array.isArray(value) ? value.length : 0;
-}
-
 function pluck(value: unknown[], extraArgs: unknown[]): unknown[] {
 	if (!Array.isArray(extraArgs)) {
 		throw new ExpressionError('arguments must be passed to pluck');
 	}
-	const fieldsToPluck = extraArgs;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	return (value as any[]).map((element: object) => {
-		const entries = Object.entries(element);
-		return entries.reduce((p, c) => {
-			const [key, val] = c as [string, Date | string | number];
-			if (fieldsToPluck.includes(key)) {
-				Object.assign(p, { [key]: val });
+	if (!extraArgs || extraArgs.length === 0) {
+		return value;
+	}
+	const plucked = value.reduce<unknown[]>((pluckedFromObject, current) => {
+		if (current && typeof current === 'object') {
+			const p: unknown[] = [];
+			Object.keys(current).forEach((k) => {
+				(extraArgs as string[]).forEach((field) => {
+					if (current && field === k) {
+						p.push((current as { [key: string]: unknown })[k]);
+					}
+				});
+			});
+			if (p.length > 0) {
+				pluckedFromObject.push(p.length === 1 ? p[0] : p);
 			}
-			return p;
-		}, {});
-	}) as unknown[];
+		}
+		return pluckedFromObject;
+	}, new Array<unknown>());
+	return plucked;
 }
 
-function random(value: unknown[]): unknown {
+function randomItem(value: unknown[]): unknown {
 	const len = value === undefined ? 0 : value.length;
-	return len ? value[Math.floor(Math.random() * len)] : undefined;
+	return len ? value[randomInt(len)] : undefined;
 }
 
 function unique(value: unknown[], extraArgs: string[]): unknown[] {
-	if (extraArgs.length) {
-		return value.reduce<unknown[]>((l, v) => {
-			if (typeof v === 'object' && v !== null && extraArgs.every((i) => i in v)) {
-				const alreadySeen = l.find((i) =>
-					// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
-					extraArgs.every((j) => deepCompare((i as any)[j], (v as any)[j])),
-				);
-				if (!alreadySeen) {
-					l.push(v);
-				}
-			}
-			return l;
-		}, []);
-	}
-	return value.reduce<unknown[]>((l, v) => {
-		if (l.findIndex((i) => deepCompare(i, v)) === -1) {
-			l.push(v);
+	const mapForEqualityCheck = (item: unknown): unknown => {
+		if (extraArgs.length > 0 && item && typeof item === 'object') {
+			return extraArgs.reduce<Record<string, unknown>>((acc, key) => {
+				acc[key] = (item as Record<string, unknown>)[key];
+				return acc;
+			}, {});
 		}
-		return l;
-	}, []);
+		return item;
+	};
+	return uniqWith(value, (a, b) =>
+		deepEqual(mapForEqualityCheck(a), mapForEqualityCheck(b), { strict: true }),
+	);
 }
 
+const ensureNumberArray = (arr: unknown[], { fnName }: { fnName: string }) => {
+	if (arr.some((i) => typeof i !== 'number')) {
+		throw new ExpressionExtensionError(`${fnName}(): all array elements must be numbers`);
+	}
+};
+
 function sum(value: unknown[]): number {
+	ensureNumberArray(value, { fnName: 'sum' });
+
 	return value.reduce((p: number, c: unknown) => {
 		if (typeof c === 'string') {
 			return p + parseFloat(c);
@@ -162,6 +90,8 @@ function sum(value: unknown[]): number {
 }
 
 function min(value: unknown[]): number {
+	ensureNumberArray(value, { fnName: 'min' });
+
 	return Math.min(
 		...value.map((v) => {
 			if (typeof v === 'string') {
@@ -176,6 +106,8 @@ function min(value: unknown[]): number {
 }
 
 function max(value: unknown[]): number {
+	ensureNumberArray(value, { fnName: 'max' });
+
 	return Math.max(
 		...value.map((v) => {
 			if (typeof v === 'string') {
@@ -190,6 +122,8 @@ function max(value: unknown[]): number {
 }
 
 export function average(value: unknown[]) {
+	ensureNumberArray(value, { fnName: 'average' });
+
 	// This would usually be NaN but I don't think users
 	// will expect that
 	if (value.length === 0) {
@@ -200,7 +134,11 @@ export function average(value: unknown[]) {
 
 function compact(value: unknown[]): unknown[] {
 	return value
-		.filter((v) => v !== null && v !== undefined)
+		.filter((v) => {
+			if (v && typeof v === 'object' && Object.keys(v).length === 0) return false;
+
+			return v !== null && v !== undefined && v !== 'nil' && v !== '';
+		})
 		.map((v) => {
 			if (typeof v === 'object' && v !== null) {
 				return oCompact(v);
@@ -213,7 +151,7 @@ function smartJoin(value: unknown[], extraArgs: string[]): object {
 	const [keyField, valueField] = extraArgs;
 	if (!keyField || !valueField || typeof keyField !== 'string' || typeof valueField !== 'string') {
 		throw new ExpressionExtensionError(
-			'smartJoin requires 2 arguments: keyField and nameField. e.g. .smartJoin("name", "value")',
+			'smartJoin(): expected two string args, e.g. .smartJoin("name", "value")',
 		);
 	}
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-return
@@ -229,42 +167,22 @@ function smartJoin(value: unknown[], extraArgs: string[]): object {
 
 function chunk(value: unknown[], extraArgs: number[]) {
 	const [chunkSize] = extraArgs;
-	if (typeof chunkSize !== 'number') {
-		throw new ExpressionExtensionError('chunk requires 1 parameter: chunkSize. e.g. .chunk(5)');
+	if (typeof chunkSize !== 'number' || chunkSize === 0) {
+		throw new ExpressionExtensionError('chunk(): expected non-zero numeric arg, e.g. .chunk(5)');
 	}
 	const chunks: unknown[][] = [];
 	for (let i = 0; i < value.length; i += chunkSize) {
 		// I have no clue why eslint thinks 2 numbers could be anything but that but here we are
-		// eslint-disable-next-line @typescript-eslint/restrict-plus-operands
+
 		chunks.push(value.slice(i, i + chunkSize));
 	}
 	return chunks;
 }
 
-function filter(value: unknown[], extraArgs: unknown[]): unknown[] {
-	const [field, term] = extraArgs as [string | (() => void), unknown | string];
-	if (typeof field !== 'string' && typeof field !== 'function') {
-		throw new ExpressionExtensionError(
-			'filter requires 1 or 2 arguments: (field and term), (term and [optional keepOrRemove "keep" or "remove" default "keep"] (for string arrays)), or function. e.g. .filter("type", "home") or .filter((i) => i.type === "home") or .filter("home", [optional keepOrRemove]) (for string arrays)',
-		);
-	}
-	if (value.every((i) => typeof i === 'string') && typeof field === 'string') {
-		return (value as string[]).filter((i) =>
-			term === 'remove' ? !i.includes(field) : i.includes(field),
-		);
-	} else if (typeof field === 'string') {
-		return value.filter(
-			// eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any
-			(v) => typeof v === 'object' && v !== null && field in v && (v as any)[field] === term,
-		);
-	}
-	return value.filter(field);
-}
-
 function renameKeys(value: unknown[], extraArgs: string[]): unknown[] {
 	if (extraArgs.length === 0 || extraArgs.length % 2 !== 0) {
 		throw new ExpressionExtensionError(
-			'renameKeys requires an even amount of arguments: from1, to1 [, from2, to2, ...]. e.g. .renameKeys("name", "title")',
+			'renameKeys(): expected an even amount of args: from1, to1 [, from2, to2, ...]. e.g. .renameKeys("name", "title")',
 		);
 	}
 	return value.map((v) => {
@@ -287,40 +205,68 @@ function renameKeys(value: unknown[], extraArgs: string[]): unknown[] {
 	});
 }
 
-function merge(value: unknown[], extraArgs: unknown[][]): unknown[] {
+function mergeObjects(value: Record<string, unknown>, extraArgs: unknown[]): unknown {
+	const [other] = extraArgs;
+
+	if (!other) {
+		return value;
+	}
+
+	if (typeof other !== 'object') {
+		throw new ExpressionExtensionError('merge(): expected object arg');
+	}
+
+	const newObject = { ...value };
+	for (const [key, val] of Object.entries(other)) {
+		if (!(key in newObject)) {
+			newObject[key] = val;
+		}
+	}
+	return newObject;
+}
+
+function merge(value: unknown[], extraArgs: unknown[][]): unknown {
 	const [others] = extraArgs;
+
+	if (others === undefined) {
+		// If there are no arguments passed, merge all objects within the array
+		const merged = value.reduce((combined, current) => {
+			if (current !== null && typeof current === 'object' && !Array.isArray(current)) {
+				combined = mergeObjects(combined as Record<string, unknown>, [current]);
+			}
+			return combined;
+		}, {});
+		return merged;
+	}
+
 	if (!Array.isArray(others)) {
 		throw new ExpressionExtensionError(
-			'merge requires 1 argument that is an array. e.g. .merge([{ id: 1, otherValue: 3 }])',
+			'merge(): expected array arg, e.g. .merge([{ id: 1, otherValue: 3 }])',
 		);
 	}
 	const listLength = value.length > others.length ? value.length : others.length;
-	const newList = new Array(listLength);
+	let merged = {};
 	for (let i = 0; i < listLength; i++) {
 		if (value[i] !== undefined) {
 			if (typeof value[i] === 'object' && typeof others[i] === 'object') {
-				newList[i] = oMerge(value[i] as object, [others[i]]);
-			} else {
-				newList[i] = value[i];
+				merged = Object.assign(
+					merged,
+					mergeObjects(value[i] as Record<string, unknown>, [others[i]]),
+				);
 			}
-		} else {
-			// eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-			newList[i] = others[i];
 		}
 	}
-	return newList;
+	return merged;
 }
 
 function union(value: unknown[], extraArgs: unknown[][]): unknown[] {
 	const [others] = extraArgs;
 	if (!Array.isArray(others)) {
-		throw new ExpressionExtensionError(
-			'union requires 1 argument that is an array. e.g. .union([1, 2, 3, 4])',
-		);
+		throw new ExpressionExtensionError('union(): expected array arg, e.g. .union([1, 2, 3, 4])');
 	}
 	const newArr: unknown[] = Array.from(value);
 	for (const v of others) {
-		if (newArr.findIndex((w) => deepCompare(w, v)) === -1) {
+		if (newArr.findIndex((w) => deepEqual(w, v, { strict: true })) === -1) {
 			newArr.push(v);
 		}
 	}
@@ -331,12 +277,12 @@ function difference(value: unknown[], extraArgs: unknown[][]): unknown[] {
 	const [others] = extraArgs;
 	if (!Array.isArray(others)) {
 		throw new ExpressionExtensionError(
-			'difference requires 1 argument that is an array. e.g. .difference([1, 2, 3, 4])',
+			'difference(): expected array arg, e.g. .difference([1, 2, 3, 4])',
 		);
 	}
 	const newArr: unknown[] = [];
 	for (const v of value) {
-		if (others.findIndex((w) => deepCompare(w, v)) === -1) {
+		if (others.findIndex((w) => deepEqual(w, v, { strict: true })) === -1) {
 			newArr.push(v);
 		}
 	}
@@ -347,44 +293,397 @@ function intersection(value: unknown[], extraArgs: unknown[][]): unknown[] {
 	const [others] = extraArgs;
 	if (!Array.isArray(others)) {
 		throw new ExpressionExtensionError(
-			'difference requires 1 argument that is an array. e.g. .difference([1, 2, 3, 4])',
+			'intersection(): expected array arg, e.g. .intersection([1, 2, 3, 4])',
 		);
 	}
 	const newArr: unknown[] = [];
 	for (const v of value) {
-		if (others.findIndex((w) => deepCompare(w, v)) !== -1) {
+		if (others.findIndex((w) => deepEqual(w, v, { strict: true })) !== -1) {
 			newArr.push(v);
 		}
 	}
 	for (const v of others) {
-		if (value.findIndex((w) => deepCompare(w, v)) !== -1) {
+		if (value.findIndex((w) => deepEqual(w, v, { strict: true })) !== -1) {
 			newArr.push(v);
 		}
 	}
 	return unique(newArr, []);
 }
 
+function append(value: unknown[], extraArgs: unknown[][]): unknown[] {
+	return value.concat(extraArgs);
+}
+
+export function toJsonString(value: unknown[]) {
+	return JSON.stringify(value);
+}
+
+export function toInt() {
+	return undefined;
+}
+
+export function toFloat() {
+	return undefined;
+}
+
+export function toBoolean() {
+	return undefined;
+}
+
+export function toDateTime() {
+	return undefined;
+}
+
+average.doc = {
+	name: 'average',
+	description:
+		'Returns the average of the numbers in the array. Throws an error if there are any non-numbers.',
+	examples: [{ example: '[12, 1, 5].average()', evaluated: '6' }],
+	returnType: 'number',
+	docURL: 'https://docs.n8n.io/code/builtin/data-transformation-functions/arrays/#array-average',
+};
+
+compact.doc = {
+	name: 'compact',
+	description:
+		'Removes any empty values from the array. <code>null</code>, <code>""</code> and <code>undefined</code> count as empty.',
+	examples: [{ example: '[2, null, 1, ""].compact()', evaluated: '[2, 1]' }],
+	returnType: 'Array',
+	docURL: 'https://docs.n8n.io/code/builtin/data-transformation-functions/arrays/#array-compact',
+};
+
+isEmpty.doc = {
+	name: 'isEmpty',
+	description: 'Returns <code>true</code> if the array has no elements or is <code>null</code>',
+	examples: [
+		{ example: '[].isEmpty()', evaluated: 'true' },
+		{ example: "['quick', 'brown', 'fox'].isEmpty()", evaluated: 'false' },
+	],
+	returnType: 'boolean',
+	docURL: 'https://docs.n8n.io/code/builtin/data-transformation-functions/arrays/#array-isEmpty',
+};
+
+isNotEmpty.doc = {
+	name: 'isNotEmpty',
+	description: 'Returns <code>true</code> if the array has at least one element',
+	examples: [
+		{ example: "['quick', 'brown', 'fox'].isNotEmpty()", evaluated: 'true' },
+		{ example: '[].isNotEmpty()', evaluated: 'false' },
+	],
+	returnType: 'boolean',
+	docURL: 'https://docs.n8n.io/code/builtin/data-transformation-functions/arrays/#array-isNotEmpty',
+};
+
+first.doc = {
+	name: 'first',
+	description: 'Returns the first element of the array',
+	examples: [{ example: "['quick', 'brown', 'fox'].first()", evaluated: "'quick'" }],
+	returnType: 'any',
+	docURL: 'https://docs.n8n.io/code/builtin/data-transformation-functions/arrays/#array-first',
+};
+
+last.doc = {
+	name: 'last',
+	description: 'Returns the last element of the array',
+	examples: [{ example: "['quick', 'brown', 'fox'].last()", evaluated: "'fox'" }],
+	returnType: 'any',
+	docURL: 'https://docs.n8n.io/code/builtin/data-transformation-functions/arrays/#array-last',
+};
+
+max.doc = {
+	name: 'max',
+	description:
+		'Returns the largest number in the array. Throws an error if there are any non-numbers.',
+	examples: [{ example: '[1, 12, 5].max()', evaluated: '12' }],
+	returnType: 'number',
+	docURL: 'https://docs.n8n.io/code/builtin/data-transformation-functions/arrays/#array-max',
+};
+
+min.doc = {
+	name: 'min',
+	description:
+		'Returns the smallest number in the array. Throws an error if there are any non-numbers.',
+	examples: [{ example: '[12, 1, 5].min()', evaluated: '1' }],
+	returnType: 'number',
+	docURL: 'https://docs.n8n.io/code/builtin/data-transformation-functions/arrays/#array-min',
+};
+
+randomItem.doc = {
+	name: 'randomItem',
+	description: 'Returns a randomly-chosen element from the array',
+	examples: [
+		{ example: "['quick', 'brown', 'fox'].randomItem()", evaluated: "'brown'" },
+		{ example: "['quick', 'brown', 'fox'].randomItem()", evaluated: "'quick'" },
+	],
+	returnType: 'any',
+	docURL: 'https://docs.n8n.io/code/builtin/data-transformation-functions/arrays/#array-randomItem',
+};
+
+sum.doc = {
+	name: 'sum',
+	description:
+		'Returns the total of all the numbers in the array. Throws an error if there are any non-numbers.',
+	examples: [{ example: '[12, 1, 5].sum()', evaluated: '18' }],
+	returnType: 'number',
+	docURL: 'https://docs.n8n.io/code/builtin/data-transformation-functions/arrays/#array-sum',
+};
+
+chunk.doc = {
+	name: 'chunk',
+	description: 'Splits the array into an array of sub-arrays, each with the given length',
+	examples: [{ example: '[1, 2, 3, 4, 5, 6].chunk(2)', evaluated: '[[1,2],[3,4],[5,6]]' }],
+	returnType: 'Array',
+	args: [
+		{
+			name: 'length',
+			optional: false,
+			description: 'The number of elements in each chunk',
+			type: 'number',
+		},
+	],
+	docURL: 'https://docs.n8n.io/code/builtin/data-transformation-functions/arrays/#array-chunk',
+};
+
+difference.doc = {
+	name: 'difference',
+	description:
+		"Compares two arrays. Returns all elements in the base array that aren't present\nin <code>otherArray</code>.",
+	examples: [{ example: '[1, 2, 3].difference([2, 3])', evaluated: '[1]' }],
+	returnType: 'Array',
+	args: [
+		{
+			name: 'otherArray',
+			optional: false,
+			description: 'The array to compare to the base array',
+			type: 'Array',
+		},
+	],
+	docURL: 'https://docs.n8n.io/code/builtin/data-transformation-functions/arrays/#array-difference',
+};
+
+intersection.doc = {
+	name: 'intersection',
+	description:
+		'Compares two arrays. Returns all elements in the base array that are also present in the other array.',
+	examples: [{ example: '[1, 2].intersection([2, 3])', evaluated: '[2]' }],
+	returnType: 'Array',
+	args: [
+		{
+			name: 'otherArray',
+			optional: false,
+			description: 'The array to compare to the base array',
+			type: 'Array',
+		},
+	],
+	docURL:
+		'https://docs.n8n.io/code/builtin/data-transformation-functions/arrays/#array-intersection',
+};
+
+merge.doc = {
+	name: 'merge',
+	description:
+		'Merges two Object-arrays into one object by merging the key-value pairs of each element.',
+	examples: [
+		{
+			example:
+				"[{ name: 'Nathan' }, { age: 42 }].merge([{ city: 'Berlin' }, { country: 'Germany' }])",
+			evaluated: "{ name: 'Nathan', age: 42, city: 'Berlin', country: 'Germany' }",
+		},
+	],
+	returnType: 'Object',
+	args: [
+		{
+			name: 'otherArray',
+			optional: false,
+			description: 'The array to merge into the base array',
+			type: 'Array',
+		},
+	],
+	docURL: 'https://docs.n8n.io/code/builtin/data-transformation-functions/arrays/#array-merge',
+};
+
+pluck.doc = {
+	name: 'pluck',
+	description:
+		'Returns an array containing the values of the given field(s) in each Object of the array. Ignores any array elements that aren’t Objects or don’t have a key matching the field name(s) provided.',
+	examples: [
+		{
+			example: "[{ name: 'Nathan', age: 42 },{ name: 'Jan', city: 'Berlin' }].pluck('name')",
+			evaluated: '["Nathan", "Jan"]',
+		},
+		{
+			example: "[{ name: 'Nathan', age: 42 },{ name: 'Jan', city: 'Berlin' }].pluck('age')",
+			evaluated: '[42]',
+		},
+	],
+	returnType: 'Array',
+	args: [
+		{
+			name: 'fieldNames',
+			optional: false,
+			variadic: true,
+			description: 'The keys to retrieve the value of',
+			type: 'string',
+		},
+	],
+	docURL: 'https://docs.n8n.io/code/builtin/data-transformation-functions/arrays/#array-pluck',
+};
+
+renameKeys.doc = {
+	name: 'renameKeys',
+	description:
+		'Changes all matching keys (field names) of any Objects in the array. Rename more than one key by\nadding extra arguments, i.e. <code>from1, to1, from2, to2, ...</code>.',
+	examples: [
+		{
+			example: "[{ name: 'bob' }, { name: 'meg' }].renameKeys('name', 'x')",
+			evaluated: "[{ x: 'bob' }, { x: 'meg' }]",
+		},
+	],
+	returnType: 'Array',
+	args: [
+		{
+			name: 'from',
+			optional: false,
+			description: 'The key to rename',
+			type: 'string',
+		},
+		{ name: 'to', optional: false, description: 'The new key name', type: 'string' },
+	],
+	docURL: 'https://docs.n8n.io/code/builtin/data-transformation-functions/arrays/#array-renameKeys',
+};
+
+smartJoin.doc = {
+	name: 'smartJoin',
+	description:
+		'Creates a single Object from an array of Objects. Each Object in the array provides one field for the returned Object. Each Object in the array must contain a field with the key name and a field with the value.',
+	examples: [
+		{
+			example:
+				"[{ field: 'age', value: 2 }, { field: 'city', value: 'Berlin' }].smartJoin('field', 'value')",
+			evaluated: "{ age: 2, city: 'Berlin' }",
+		},
+	],
+	returnType: 'Object',
+	args: [
+		{
+			name: 'keyField',
+			optional: false,
+			description: 'The field in each Object containing the key name',
+			type: 'string',
+		},
+		{
+			name: 'nameField',
+			optional: false,
+			description: 'The field in each Object containing the value',
+			type: 'string',
+		},
+	],
+	docURL: 'https://docs.n8n.io/code/builtin/data-transformation-functions/arrays/#array-smartJoin',
+};
+
+union.doc = {
+	name: 'union',
+	description: 'Concatenates two arrays and then removes any duplicates',
+	examples: [{ example: '[1, 2].union([2, 3])', evaluated: '[1, 2, 3]' }],
+	returnType: 'Array',
+	args: [
+		{
+			name: 'otherArray',
+			optional: false,
+			description: 'The array to union with the base array',
+			type: 'Array',
+		},
+	],
+	docURL: 'https://docs.n8n.io/code/builtin/data-transformation-functions/arrays/#array-union',
+};
+
+unique.doc = {
+	name: 'unique',
+	description: 'Removes any duplicate elements from the array',
+	examples: [
+		{ example: "['quick', 'brown', 'quick'].unique()", evaluated: "['quick', 'brown']" },
+		{
+			example: "[{ name: 'Nathan', age: 42 }, { name: 'Nathan', age: 22 }].unique()",
+			evaluated: "[{ name: 'Nathan', age: 42 }, { name: 'Nathan', age: 22 }]",
+		},
+		{
+			example: "[{ name: 'Nathan', age: 42 }, { name: 'Nathan', age: 22 }].unique('name')",
+			evaluated: "[{ name: 'Nathan', age: 42 }]",
+		},
+	],
+	returnType: 'any',
+	aliases: ['removeDuplicates'],
+	docURL: 'https://docs.n8n.io/code/builtin/data-transformation-functions/arrays/#array-unique',
+	args: [
+		{
+			name: 'fieldNames',
+			optional: false,
+			variadic: true,
+			description: 'The object keys to check for equality',
+			type: 'any',
+		},
+	],
+};
+
+toJsonString.doc = {
+	name: 'toJsonString',
+	description:
+		"Converts the array to a JSON string. The same as JavaScript's <code>JSON.stringify()</code>.",
+	examples: [
+		{
+			example: "['quick', 'brown', 'fox'].toJsonString()",
+			evaluated: '\'["quick","brown","fox"]\'',
+		},
+	],
+	docURL:
+		'https://docs.n8n.io/code/builtin/data-transformation-functions/arrays/#array-toJsonString',
+	returnType: 'string',
+};
+
+append.doc = {
+	name: 'append',
+	description:
+		'Adds new elements to the end of the array. Similar to <code>push()</code>, but returns the modified array. Consider using spread syntax instead (see examples).',
+	examples: [
+		{ example: "['forget', 'me'].append('not')", evaluated: "['forget', 'me', 'not']" },
+		{ example: '[9, 0, 2].append(1, 0)', evaluated: '[9, 0, 2, 1, 0]' },
+		{
+			example: '[...[9, 0, 2], 1, 0]',
+			evaluated: '[9, 0, 2, 1, 0]',
+			description: 'Consider using spread syntax instead',
+		},
+	],
+	docURL: 'https://docs.n8n.io/code/builtin/data-transformation-functions/arrays/#array-append',
+	returnType: 'Array',
+	args: [
+		{
+			name: 'elements',
+			optional: false,
+			variadic: true,
+			description: 'The elements to append, in order',
+			type: 'any',
+		},
+	],
+};
+
+const removeDuplicates: Extension = unique.bind({});
+removeDuplicates.doc = { ...unique.doc, hidden: true };
+
 export const arrayExtensions: ExtensionMap = {
 	typeName: 'Array',
 	functions: {
-		count: length,
-		duplicates: unique,
-		filter,
+		removeDuplicates,
+		unique,
 		first,
 		last,
-		length,
 		pluck,
-		unique,
-		random,
-		randomItem: random,
-		remove: unique,
-		size: length,
+		randomItem,
 		sum,
 		min,
 		max,
 		average,
-		isPresent,
-		isBlank,
+		isNotEmpty,
+		isEmpty,
 		compact,
 		smartJoin,
 		chunk,
@@ -393,5 +692,11 @@ export const arrayExtensions: ExtensionMap = {
 		union,
 		difference,
 		intersection,
+		append,
+		toJsonString,
+		toInt,
+		toFloat,
+		toBoolean,
+		toDateTime,
 	},
 };

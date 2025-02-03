@@ -1,15 +1,19 @@
-import { IExecuteFunctions, IHookFunctions } from 'n8n-core';
-
-import { IDataObject, JsonObject, NodeApiError } from 'n8n-workflow';
-
-import { OptionsWithUri } from 'request';
+import type {
+	IExecuteFunctions,
+	IHookFunctions,
+	IDataObject,
+	JsonObject,
+	IHttpRequestMethods,
+	IRequestOptions,
+} from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
 
 /**
  * Make an authenticated or unauthenticated API request to Reddit.
  */
 export async function redditApiRequest(
 	this: IHookFunctions | IExecuteFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	qs: IDataObject,
 ): Promise<any> {
@@ -19,7 +23,7 @@ export async function redditApiRequest(
 
 	qs.api_type = 'json';
 
-	const options: OptionsWithUri = {
+	const options: IRequestOptions = {
 		headers: {
 			'user-agent': 'n8n',
 		},
@@ -55,7 +59,7 @@ export async function redditApiRequest(
  */
 export async function redditApiRequestAllItems(
 	this: IHookFunctions | IExecuteFunctions,
-	method: string,
+	method: IHttpRequestMethods,
 	endpoint: string,
 	qs: IDataObject,
 ): Promise<any> {
@@ -75,11 +79,15 @@ export async function redditApiRequestAllItems(
 		}
 
 		if (endpoint === 'api/search_subreddits.json') {
-			responseData.subreddits.forEach((child: any) => returnData.push(child));
+			responseData.subreddits.forEach((child: any) => returnData.push(child as IDataObject));
 		} else if (resource === 'postComment' && operation === 'getAll') {
-			responseData[1].data.children.forEach((child: any) => returnData.push(child.data));
+			responseData[1].data.children.forEach((child: any) =>
+				returnData.push(child.data as IDataObject),
+			);
 		} else {
-			responseData.data.children.forEach((child: any) => returnData.push(child.data));
+			responseData.data.children.forEach((child: any) =>
+				returnData.push(child.data as IDataObject),
+			);
 		}
 		if (qs.limit && returnData.length >= qs.limit && !returnAll) {
 			return returnData;

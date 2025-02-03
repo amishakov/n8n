@@ -1,7 +1,14 @@
-import { IExecuteFunctions } from 'n8n-core';
-import { IDataObject, INodeExecutionData, INodeType, INodeTypeDescription } from 'n8n-workflow';
-import { upleadApiRequest } from './GenericFunctions';
+import type {
+	IExecuteFunctions,
+	IDataObject,
+	INodeExecutionData,
+	INodeType,
+	INodeTypeDescription,
+} from 'n8n-workflow';
+import { NodeConnectionType } from 'n8n-workflow';
+
 import { companyFields, companyOperations } from './CompanyDesciption';
+import { upleadApiRequest } from './GenericFunctions';
 import { personFields, personOperations } from './PersonDescription';
 
 export class Uplead implements INodeType {
@@ -17,8 +24,8 @@ export class Uplead implements INodeType {
 		defaults: {
 			name: 'Uplead',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: [NodeConnectionType.Main],
+		outputs: [NodeConnectionType.Main],
 		credentials: [
 			{
 				name: 'upleadApi',

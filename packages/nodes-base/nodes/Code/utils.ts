@@ -1,7 +1,10 @@
-import type { IDataObject } from 'n8n-workflow';
+import type { INodeExecutionData, IDataObject } from 'n8n-workflow';
+import { NodeExecutionOutput } from 'n8n-workflow';
 
 export function isObject(maybe: unknown): maybe is { [key: string]: unknown } {
-	return typeof maybe === 'object' && maybe !== null && !Array.isArray(maybe);
+	return (
+		typeof maybe === 'object' && maybe !== null && !Array.isArray(maybe) && !(maybe instanceof Date)
+	);
 }
 
 function isTraversable(maybe: unknown): maybe is IDataObject {
@@ -12,18 +15,48 @@ function isTraversable(maybe: unknown): maybe is IDataObject {
  * Stringify any non-standard JS objects (e.g. `Date`, `RegExp`) inside output items at any depth.
  */
 export function standardizeOutput(output: IDataObject) {
-	for (const [key, value] of Object.entries(output)) {
-		if (!isTraversable(value)) continue;
+	function standardizeOutputRecursive(obj: IDataObject, knownObjects = new WeakSet()): IDataObject {
+		for (const [key, value] of Object.entries(obj)) {
+			if (!isTraversable(value)) continue;
 
-		output[key] =
-			value.constructor.name !== 'Object'
-				? JSON.stringify(value) // Date, RegExp, etc.
-				: standardizeOutput(value);
+			if (typeof value === 'object' && value !== null) {
+				if (knownObjects.has(value)) {
+					// Found circular reference
+					continue;
+				}
+				knownObjects.add(value);
+			}
+
+			obj[key] =
+				value.constructor.name !== 'Object'
+					? JSON.stringify(value) // Date, RegExp, etc.
+					: standardizeOutputRecursive(value, knownObjects);
+		}
+		return obj;
 	}
-
+	standardizeOutputRecursive(output);
 	return output;
 }
 
-export type CodeNodeMode = 'runOnceForAllItems' | 'runOnceForEachItem';
+export const addPostExecutionWarning = (
+	returnData: INodeExecutionData[],
+	inputItemsLength: number,
+) => {
+	if (
+		returnData.length !== inputItemsLength ||
+		returnData.some((item) => item.pairedItem === undefined)
+	) {
+		return new NodeExecutionOutput(
+			[returnData],
+			[
+				{
+					message:
+						'To make sure expressions after this node work, return the input items that produced each output item. <a target="_blank" href="https://docs.n8n.io/data/data-mapping/data-item-linking/item-linking-code-node/">More info</a>',
+					location: 'outputPane',
+				},
+			],
+		);
+	}
 
-export const REQUIRED_N8N_ITEM_KEYS = new Set(['json', 'binary', 'pairedItem']);
+	return [returnData];
+};
